@@ -1,0 +1,228 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { GoogleTask, GoogleTaskList, TaskFilter, TaskPlacement } from '@/types';
+import { filterTasks } from '@/hooks/use-data';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Search, Star, Calendar, GripVertical, Check } from 'lucide-react';
+import { format } from 'date-fns';
+
+interface TaskPanelProps {
+  tasks: GoogleTask[];
+  taskLists: GoogleTaskList[];
+  placements: TaskPlacement[];
+  loading: boolean;
+  onFilterChange: (filteredTasks: GoogleTask[]) => void;
+  ignoreContainerTasks: boolean;
+}
+
+export function TaskPanel({
+  tasks,
+  taskLists,
+  placements,
+  loading,
+  onFilterChange,
+  ignoreContainerTasks,
+}: TaskPanelProps) {
+  const [filter, setFilter] = useState<TaskFilter>({
+    hideContainerTasks: ignoreContainerTasks,
+  });
+
+  useEffect(() => {
+    setFilter((prev) => ({ ...prev, hideContainerTasks: ignoreContainerTasks }));
+  }, [ignoreContainerTasks]);
+
+  const filteredTasks = filterTasks(tasks, filter);
+
+  useEffect(() => {
+    onFilterChange(filteredTasks);
+  }, [filteredTasks, onFilterChange]);
+
+  const placedTaskIds = new Set(placements.map((p) => p.taskId));
+
+  const handleDragStart = (e: React.DragEvent, task: GoogleTask) => {
+    e.dataTransfer.setData('text/plain', task.id);
+    e.currentTarget.classList.add('task-item-dragging');
+
+    const dragEl = e.currentTarget as HTMLElement;
+    dragEl.dataset.taskId = task.id;
+    dragEl.dataset.taskTitle = task.title;
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    e.currentTarget.classList.remove('task-item-dragging');
+  };
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="p-4 border-b space-y-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search tasks..."
+            className="pl-9"
+            value={filter.searchText || ''}
+            onChange={(e) => setFilter({ ...filter, searchText: e.target.value })}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="list-filter">List</Label>
+            <Select
+              value={filter.listId || 'all'}
+              onValueChange={(value) => setFilter({ ...filter, listId: value === 'all' ? undefined : value })}
+            >
+              <SelectTrigger id="list-filter">
+                <SelectValue placeholder="All lists" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All lists</SelectItem>
+                {taskLists.map((list) => (
+                  <SelectItem key={list.id} value={list.id}>
+                    {list.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="due-filter">Due date</Label>
+            <Select
+              value={filter.hasDueDate === undefined ? 'all' : filter.hasDueDate ? 'has' : 'none'}
+              onValueChange={(value) =>
+                setFilter({
+                  ...filter,
+                  hasDueDate: value === 'all' ? undefined : value === 'has',
+                })
+              }
+            >
+              <SelectTrigger id="due-filter">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="has">Has due date</SelectItem>
+                <SelectItem value="none">No due date</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="starred"
+              checked={filter.starred || false}
+              onCheckedChange={(checked) =>
+                setFilter({ ...filter, starred: checked ? true : undefined })
+              }
+            />
+            <Label htmlFor="starred" className="text-sm cursor-pointer">
+              Starred only
+            </Label>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="hideContainer"
+              checked={filter.hideContainerTasks || false}
+              onCheckedChange={(checked) =>
+                setFilter({ ...filter, hideContainerTasks: checked ? true : undefined })
+              }
+            />
+            <Label htmlFor="hideContainer" className="text-sm cursor-pointer">
+              Hide containers
+            </Label>
+          </div>
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-2">
+          {loading ? (
+            <div className="text-center text-muted-foreground py-8">Loading tasks...</div>
+          ) : filteredTasks.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8">No tasks found</div>
+          ) : (
+            filteredTasks.map((task) => (
+              <TaskItem
+                key={task.id}
+                task={task}
+                isPlaced={placedTaskIds.has(task.id)}
+                onDragStart={(e) => handleDragStart(e, task)}
+                onDragEnd={handleDragEnd}
+              />
+            ))
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+interface TaskItemProps {
+  task: GoogleTask;
+  isPlaced: boolean;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+}
+
+function TaskItem({ task, isPlaced, onDragStart, onDragEnd }: TaskItemProps) {
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      data-task-id={task.id}
+      data-task-title={task.title}
+      className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 cursor-grab active:cursor-grabbing transition-colors"
+    >
+      <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-medium truncate">{task.title}</span>
+          {task.starred && <Star className="h-4 w-4 text-yellow-500 flex-shrink-0 fill-yellow-500" />}
+          {isPlaced && (
+            <Badge variant="secondary" className="flex-shrink-0">
+              <Check className="h-3 w-3 mr-1" />
+              Placed
+            </Badge>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+          <span>{task.listTitle}</span>
+          {task.due && (
+            <>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {format(new Date(task.due), 'MMM d')}
+              </span>
+            </>
+          )}
+          {task.hasSubtasks && (
+            <>
+              <span>•</span>
+              <span>Has subtasks</span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
