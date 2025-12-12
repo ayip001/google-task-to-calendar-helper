@@ -1,0 +1,202 @@
+import { GoogleTask, GoogleCalendarEvent, UserSettings, TaskPlacement, TimeSlot, AutoFitResult } from '@/types';
+
+export function autoFitTasks(
+  tasks: GoogleTask[],
+  existingEvents: GoogleCalendarEvent[],
+  existingPlacements: TaskPlacement[],
+  settings: UserSettings,
+  date: string
+): AutoFitResult {
+  const availableSlots = _calculateAvailableSlots(
+    existingEvents,
+    existingPlacements,
+    settings,
+    date
+  );
+
+  const filteredTasks = settings.ignoreContainerTasks
+    ? tasks.filter((t) => !t.hasSubtasks)
+    : tasks;
+
+  const sortedTasks = _sortTasksByPriority(filteredTasks);
+  const placements: TaskPlacement[] = [];
+  const unplacedTasks: GoogleTask[] = [];
+  const placedTaskIds = new Set<string>();
+
+  for (const task of sortedTasks) {
+    if (placedTaskIds.has(task.id)) {
+      continue;
+    }
+
+    const slot = _findFirstAvailableSlot(availableSlots, settings.defaultTaskDuration);
+
+    if (slot) {
+      const placement: TaskPlacement = {
+        id: `${task.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        taskId: task.id,
+        taskTitle: task.title,
+        startTime: slot.start.toISOString(),
+        duration: settings.defaultTaskDuration,
+        color: settings.taskColor,
+      };
+
+      placements.push(placement);
+      placedTaskIds.add(task.id);
+
+      _removeSlotTime(availableSlots, slot.start, settings.defaultTaskDuration, settings.minTimeBetweenTasks);
+    } else {
+      unplacedTasks.push(task);
+    }
+  }
+
+  const message = _generateResultMessage(placements, unplacedTasks);
+
+  return { placements, unplacedTasks, message };
+}
+
+function _calculateAvailableSlots(
+  events: GoogleCalendarEvent[],
+  placements: TaskPlacement[],
+  settings: UserSettings,
+  date: string
+): TimeSlot[] {
+  const slots: TimeSlot[] = [];
+
+  for (const hours of settings.workingHours) {
+    const start = _parseTimeToDate(date, hours.start);
+    const end = _parseTimeToDate(date, hours.end);
+    slots.push({ start, end });
+  }
+
+  const blockedTimes = _getBlockedTimes(events, placements, settings.minTimeBetweenTasks);
+
+  for (const blocked of blockedTimes) {
+    _subtractTimeFromSlots(slots, blocked.start, blocked.end);
+  }
+
+  return slots.filter((slot) => slot.end.getTime() > slot.start.getTime());
+}
+
+function _parseTimeToDate(date: string, time: string): Date {
+  const [hours, minutes] = time.split(':').map(Number);
+  const d = new Date(date);
+  d.setHours(hours, minutes, 0, 0);
+  return d;
+}
+
+function _getBlockedTimes(
+  events: GoogleCalendarEvent[],
+  placements: TaskPlacement[],
+  minGap: number
+): TimeSlot[] {
+  const blocked: TimeSlot[] = [];
+
+  for (const event of events) {
+    const start = event.start.dateTime ? new Date(event.start.dateTime) : null;
+    const end = event.end.dateTime ? new Date(event.end.dateTime) : null;
+
+    if (start && end) {
+      blocked.push({
+        start: new Date(start.getTime() - minGap * 60 * 1000),
+        end: new Date(end.getTime() + minGap * 60 * 1000),
+      });
+    }
+  }
+
+  for (const placement of placements) {
+    const start = new Date(placement.startTime);
+    const end = new Date(start.getTime() + placement.duration * 60 * 1000);
+    blocked.push({
+      start: new Date(start.getTime() - minGap * 60 * 1000),
+      end: new Date(end.getTime() + minGap * 60 * 1000),
+    });
+  }
+
+  return blocked;
+}
+
+function _subtractTimeFromSlots(slots: TimeSlot[], blockStart: Date, blockEnd: Date): void {
+  for (let i = slots.length - 1; i >= 0; i--) {
+    const slot = slots[i];
+
+    if (blockEnd <= slot.start || blockStart >= slot.end) {
+      continue;
+    }
+
+    if (blockStart <= slot.start && blockEnd >= slot.end) {
+      slots.splice(i, 1);
+      continue;
+    }
+
+    if (blockStart > slot.start && blockEnd < slot.end) {
+      const newSlot: TimeSlot = { start: blockEnd, end: slot.end };
+      slot.end = blockStart;
+      slots.splice(i + 1, 0, newSlot);
+      continue;
+    }
+
+    if (blockStart <= slot.start) {
+      slot.start = blockEnd;
+    } else {
+      slot.end = blockStart;
+    }
+  }
+}
+
+function _findFirstAvailableSlot(slots: TimeSlot[], durationMinutes: number): TimeSlot | null {
+  const durationMs = durationMinutes * 60 * 1000;
+
+  for (const slot of slots) {
+    const slotDuration = slot.end.getTime() - slot.start.getTime();
+    if (slotDuration >= durationMs) {
+      return { start: new Date(slot.start), end: new Date(slot.start.getTime() + durationMs) };
+    }
+  }
+
+  return null;
+}
+
+function _removeSlotTime(
+  slots: TimeSlot[],
+  start: Date,
+  durationMinutes: number,
+  gapMinutes: number
+): void {
+  const blockStart = start;
+  const blockEnd = new Date(start.getTime() + (durationMinutes + gapMinutes) * 60 * 1000);
+  _subtractTimeFromSlots(slots, blockStart, blockEnd);
+}
+
+function _sortTasksByPriority(tasks: GoogleTask[]): GoogleTask[] {
+  return [...tasks].sort((a, b) => {
+    const aStarred = a.starred || false;
+    const bStarred = b.starred || false;
+    const aHasDue = !!a.due;
+    const bHasDue = !!b.due;
+
+    const aPriority = (aStarred ? 2 : 0) + (aHasDue ? 1 : 0);
+    const bPriority = (bStarred ? 2 : 0) + (bHasDue ? 1 : 0);
+
+    if (aPriority !== bPriority) {
+      return bPriority - aPriority;
+    }
+
+    if (aHasDue && bHasDue) {
+      return new Date(a.due!).getTime() - new Date(b.due!).getTime();
+    }
+
+    return 0;
+  });
+}
+
+function _generateResultMessage(placements: TaskPlacement[], unplaced: GoogleTask[]): string {
+  if (unplaced.length === 0) {
+    return `Successfully placed ${placements.length} task(s).`;
+  }
+
+  if (placements.length === 0) {
+    return `Could not place any tasks. No available time slots.`;
+  }
+
+  return `Placed ${placements.length} task(s). ${unplaced.length} task(s) could not fit.`;
+}
