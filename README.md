@@ -19,7 +19,7 @@ A Next.js web dashboard that integrates with Google Calendar and Tasks APIs to h
 - **Styling**: Tailwind CSS
 - **Calendar**: FullCalendar
 - **Authentication**: next-auth with Google OAuth
-- **Database**: Vercel KV (Redis)
+- **Database**: Upstash Redis
 - **APIs**: Google Calendar API, Google Tasks API
 
 ## Setup
@@ -43,11 +43,8 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your-secret-key
 
-# Vercel KV (Redis)
-KV_URL=your-kv-url
-KV_REST_API_URL=your-kv-rest-url
-KV_REST_API_TOKEN=your-kv-token
-KV_REST_API_READ_ONLY_TOKEN=your-kv-read-token
+# Upstash Redis (format: redis://default:TOKEN@ENDPOINT)
+REDIS_URL=redis://default:your-token@your-endpoint.upstash.io:6379
 ```
 
 ### Google Cloud Setup
@@ -100,7 +97,7 @@ src/
 │   └── use-data.ts              # Data fetching hooks
 ├── lib/
 │   ├── google/                  # Google API clients
-│   ├── kv/                      # Vercel KV operations
+│   ├── kv/                      # Upstash Redis operations
 │   ├── auth.ts                  # NextAuth configuration
 │   ├── autofit.ts               # Auto-fit algorithm
 │   └── constants.ts             # App constants
@@ -110,7 +107,7 @@ src/
 
 ## Data Models
 
-### User Settings (stored in Vercel KV)
+### User Settings (stored in Upstash Redis)
 ```json
 {
   "defaultTaskDuration": 30,
@@ -125,7 +122,7 @@ src/
 }
 ```
 
-### Temporary Placements (stored in Vercel KV with 24hr TTL)
+### Temporary Placements (stored in Upstash Redis with 24hr TTL)
 ```json
 [
   {

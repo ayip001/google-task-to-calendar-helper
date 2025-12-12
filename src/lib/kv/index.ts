@@ -1,10 +1,38 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 import { UserSettings, TaskPlacement } from '@/types';
 import { DEFAULT_SETTINGS, KV_KEYS, PLACEMENT_TTL_SECONDS } from '../constants';
 
+function _parseRedisUrl(redisUrl: string): { url: string; token: string } {
+  const urlPattern = /redis:\/\/[^:]+:([^@]+)@(.+)/;
+  const match = redisUrl.match(urlPattern);
+
+  if (!match) {
+    throw new Error('Invalid REDIS_URL format. Expected: redis://default:TOKEN@ENDPOINT');
+  }
+
+  const [, token, endpoint] = match;
+  return {
+    url: `https://${endpoint}`,
+    token,
+  };
+}
+
+function _createRedisClient(): Redis {
+  const redisUrl = process.env.REDIS_URL;
+
+  if (!redisUrl) {
+    throw new Error('REDIS_URL environment variable is not set');
+  }
+
+  const { url, token } = _parseRedisUrl(redisUrl);
+  return new Redis({ url, token });
+}
+
+const redis = _createRedisClient();
+
 export async function getUserSettings(userId: string): Promise<UserSettings> {
   const key = KV_KEYS.settings(userId);
-  const settings = await kv.get<UserSettings>(key);
+  const settings = await redis.get<UserSettings>(key);
   return settings || DEFAULT_SETTINGS;
 }
 
@@ -15,13 +43,13 @@ export async function setUserSettings(
   const key = KV_KEYS.settings(userId);
   const currentSettings = await getUserSettings(userId);
   const newSettings = { ...currentSettings, ...settings };
-  await kv.set(key, newSettings);
+  await redis.set(key, newSettings);
   return newSettings;
 }
 
 export async function getPlacements(userId: string, date: string): Promise<TaskPlacement[]> {
   const key = KV_KEYS.placements(userId, date);
-  const placements = await kv.get<TaskPlacement[]>(key);
+  const placements = await redis.get<TaskPlacement[]>(key);
   return placements || [];
 }
 
@@ -31,7 +59,7 @@ export async function setPlacements(
   placements: TaskPlacement[]
 ): Promise<void> {
   const key = KV_KEYS.placements(userId, date);
-  await kv.set(key, placements, { ex: PLACEMENT_TTL_SECONDS });
+  await redis.set(key, placements, { ex: PLACEMENT_TTL_SECONDS });
 }
 
 export async function addPlacement(
@@ -75,5 +103,5 @@ export async function removePlacement(
 
 export async function clearPlacements(userId: string, date: string): Promise<void> {
   const key = KV_KEYS.placements(userId, date);
-  await kv.del(key);
+  await redis.del(key);
 }
