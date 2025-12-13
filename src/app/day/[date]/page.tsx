@@ -2,7 +2,7 @@
 
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { format, parseISO, isValid } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -24,8 +24,9 @@ import {
   useSettings,
   usePlacements,
   useAutoFit,
+  filterTasks,
 } from '@/hooks/use-data';
-import { GoogleTask, TaskPlacement } from '@/types';
+import { TaskPlacement, TaskFilter } from '@/types';
 import {
   Calendar,
   ChevronLeft,
@@ -43,7 +44,7 @@ export default function DayPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
 
-  const [filteredTasks, setFilteredTasks] = useState<GoogleTask[]>([]);
+  const [filter, setFilter] = useState<TaskFilter>({});
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -64,9 +65,13 @@ export default function DayPage() {
   } = usePlacements(dateParam);
   const { runAutoFit, loading: autoFitLoading } = useAutoFit();
 
-  const handleFilterChange = useCallback((filtered: GoogleTask[]) => {
-    setFilteredTasks(filtered);
-  }, []);
+  // Sync hideContainerTasks with settings
+  useEffect(() => {
+    setFilter((prev) => ({ ...prev, hideContainerTasks: settings.ignoreContainerTasks }));
+  }, [settings.ignoreContainerTasks]);
+
+  // Compute filtered tasks from filter state
+  const filteredTasks = useMemo(() => filterTasks(tasks, filter), [tasks, filter]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -278,12 +283,12 @@ export default function DayPage() {
 
         <div className="w-96 flex-shrink-0 overflow-hidden">
           <TaskPanel
-            tasks={tasks}
             taskLists={taskLists}
             placements={placements}
             loading={tasksLoading}
-            onFilterChange={handleFilterChange}
-            ignoreContainerTasks={settings.ignoreContainerTasks}
+            filter={filter}
+            onFilterChange={setFilter}
+            filteredTasks={filteredTasks}
           />
         </div>
       </main>
