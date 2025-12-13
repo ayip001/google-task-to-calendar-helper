@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { Dispatch, SetStateAction } from 'react';
 import { GoogleTask, GoogleTaskList, TaskFilter, TaskPlacement } from '@/types';
-import { filterTasks } from '@/hooks/use-data';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -19,43 +18,25 @@ import { Search, Star, Calendar, GripVertical, Check } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface TaskPanelProps {
-  tasks: GoogleTask[];
   taskLists: GoogleTaskList[];
   placements: TaskPlacement[];
   loading: boolean;
-  onFilterChange: (filteredTasks: GoogleTask[]) => void;
-  ignoreContainerTasks: boolean;
+  filter: TaskFilter;
+  onFilterChange: Dispatch<SetStateAction<TaskFilter>>;
+  filteredTasks: GoogleTask[];
 }
 
 export function TaskPanel({
-  tasks,
   taskLists,
   placements,
   loading,
+  filter,
   onFilterChange,
-  ignoreContainerTasks,
+  filteredTasks,
 }: TaskPanelProps) {
-  const [filter, setFilter] = useState<TaskFilter>({
-    hideContainerTasks: ignoreContainerTasks,
-  });
-
-  const prevFilteredIdsRef = useRef<string>('');
-
-  useEffect(() => {
-    setFilter((prev) => ({ ...prev, hideContainerTasks: ignoreContainerTasks }));
-  }, [ignoreContainerTasks]);
-
-  const filteredTasks = useMemo(() => filterTasks(tasks, filter), [tasks, filter]);
-
-  useEffect(() => {
-    const currentIds = filteredTasks.map((t) => t.id).join(',');
-    if (currentIds !== prevFilteredIdsRef.current) {
-      prevFilteredIdsRef.current = currentIds;
-      onFilterChange(filteredTasks);
-    }
-  }, [filteredTasks, onFilterChange]);
-
   const placedTaskIds = new Set(placements.map((p) => p.taskId));
+
+  const setFilter = onFilterChange;
 
   const handleDragStart = (e: React.DragEvent, task: GoogleTask) => {
     e.dataTransfer.setData('text/plain', task.id);
