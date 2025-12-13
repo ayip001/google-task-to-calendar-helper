@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { GoogleTask, GoogleTaskList, TaskFilter, TaskPlacement } from '@/types';
 import { filterTasks } from '@/hooks/use-data';
 import { Input } from '@/components/ui/input';
@@ -39,14 +39,20 @@ export function TaskPanel({
     hideContainerTasks: ignoreContainerTasks,
   });
 
+  const prevFilteredIdsRef = useRef<string>('');
+
   useEffect(() => {
     setFilter((prev) => ({ ...prev, hideContainerTasks: ignoreContainerTasks }));
   }, [ignoreContainerTasks]);
 
-  const filteredTasks = filterTasks(tasks, filter);
+  const filteredTasks = useMemo(() => filterTasks(tasks, filter), [tasks, filter]);
 
   useEffect(() => {
-    onFilterChange(filteredTasks);
+    const currentIds = filteredTasks.map((t) => t.id).join(',');
+    if (currentIds !== prevFilteredIdsRef.current) {
+      prevFilteredIdsRef.current = currentIds;
+      onFilterChange(filteredTasks);
+    }
   }, [filteredTasks, onFilterChange]);
 
   const placedTaskIds = new Set(placements.map((p) => p.taskId));

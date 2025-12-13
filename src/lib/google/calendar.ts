@@ -36,22 +36,24 @@ export async function getEventsForDay(
     orderBy: 'startTime',
   });
 
-  return (response.data.items || []).map((item) => ({
-    id: item.id!,
-    summary: item.summary || 'Untitled Event',
-    description: item.description ?? undefined,
-    start: {
-      dateTime: item.start?.dateTime ?? undefined,
-      date: item.start?.date ?? undefined,
-      timeZone: item.start?.timeZone ?? undefined,
-    },
-    end: {
-      dateTime: item.end?.dateTime ?? undefined,
-      date: item.end?.date ?? undefined,
-      timeZone: item.end?.timeZone ?? undefined,
-    },
-    colorId: item.colorId ?? undefined,
-  }));
+  return (response.data.items || [])
+    .filter((item) => item.start?.dateTime && item.end?.dateTime)
+    .map((item) => ({
+      id: item.id!,
+      summary: item.summary || 'Untitled Event',
+      description: item.description ?? undefined,
+      start: {
+        dateTime: item.start?.dateTime ?? undefined,
+        date: item.start?.date ?? undefined,
+        timeZone: item.start?.timeZone ?? undefined,
+      },
+      end: {
+        dateTime: item.end?.dateTime ?? undefined,
+        date: item.end?.date ?? undefined,
+        timeZone: item.end?.timeZone ?? undefined,
+      },
+      colorId: item.colorId ?? undefined,
+    }));
 }
 
 export async function createCalendarEvent(
