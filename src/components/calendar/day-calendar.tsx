@@ -164,6 +164,10 @@ export function DayCalendar({
     endTime: hours.end,
   }));
 
+  // Use fallback values if settings are missing (e.g., from old saved settings)
+  const slotMinTime = settings.slotMinTime || '06:00';
+  const slotMaxTime = settings.slotMaxTime || '22:00';
+
   return (
     <div
       className="h-full day-calendar-container"
@@ -177,8 +181,8 @@ export function DayCalendar({
         headerToolbar={false}
         allDaySlot={false}
         slotDuration={`00:${TIME_SLOT_INTERVAL}:00`}
-        slotMinTime={`${settings.slotMinTime}:00`}
-        slotMaxTime={`${settings.slotMaxTime}:00`}
+        slotMinTime={`${slotMinTime}:00`}
+        slotMaxTime={`${slotMaxTime}:00`}
         height="100%"
         events={calendarEvents}
         editable={true}

@@ -186,7 +186,7 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
             <Label>Calendar Day Range</Label>
             <div className="flex items-center gap-2">
               <Select
-                value={localSettings.slotMinTime}
+                value={localSettings.slotMinTime || '06:00'}
                 onValueChange={(value) =>
                   setLocalSettings({ ...localSettings, slotMinTime: value })
                 }
@@ -204,7 +204,7 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
               </Select>
               <span>to</span>
               <Select
-                value={localSettings.slotMaxTime}
+                value={localSettings.slotMaxTime || '22:00'}
                 onValueChange={(value) =>
                   setLocalSettings({ ...localSettings, slotMaxTime: value })
                 }
