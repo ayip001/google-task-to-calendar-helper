@@ -1,4 +1,5 @@
 import { GoogleTask, GoogleCalendarEvent, UserSettings, TaskPlacement, TimeSlot, AutoFitResult } from '@/types';
+import { TIME_SLOT_INTERVAL } from './constants';
 
 export function autoFitTasks(
   tasks: GoogleTask[],
@@ -53,6 +54,21 @@ export function autoFitTasks(
   return { placements, unplacedTasks, message };
 }
 
+// Round up to the next slot interval
+function _roundUpToNextSlot(time: Date): Date {
+  const minutes = time.getMinutes();
+  const remainder = minutes % TIME_SLOT_INTERVAL;
+
+  if (remainder === 0 && time.getSeconds() === 0 && time.getMilliseconds() === 0) {
+    return new Date(time);
+  }
+
+  const roundedMinutes = minutes + (TIME_SLOT_INTERVAL - remainder);
+  const result = new Date(time);
+  result.setMinutes(roundedMinutes, 0, 0);
+  return result;
+}
+
 function _calculateAvailableSlots(
   events: GoogleCalendarEvent[],
   placements: TaskPlacement[],
@@ -65,6 +81,18 @@ function _calculateAvailableSlots(
     const start = _parseTimeToDate(date, hours.start);
     const end = _parseTimeToDate(date, hours.end);
     slots.push({ start, end });
+  }
+
+  // Check if this is today by comparing date strings
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  // If we're looking at today, exclude past times
+  if (date === todayStr) {
+    const roundedNow = _roundUpToNextSlot(now);
+    // Subtract from the beginning of the day up to the rounded current time
+    const dayStart = _parseTimeToDate(date, '00:00');
+    _subtractTimeFromSlots(slots, dayStart, roundedNow);
   }
 
   const blockedTimes = _getBlockedTimes(events, placements, settings.minTimeBetweenTasks);
