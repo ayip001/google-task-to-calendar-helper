@@ -16,6 +16,7 @@ export interface TaskPlacement {
   id: string;
   taskId: string;
   taskTitle: string;
+  listTitle?: string;
   startTime: string;
   duration: number;
   color: string;

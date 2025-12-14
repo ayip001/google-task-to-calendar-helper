@@ -91,7 +91,7 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
           <SheetDescription>Configure your task scheduling preferences</SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-6 py-6">
+        <div className="space-y-6 py-6 px-6">
           <div className="space-y-2">
             <Label>Default Task Duration: {localSettings.defaultTaskDuration} minutes</Label>
             <Slider

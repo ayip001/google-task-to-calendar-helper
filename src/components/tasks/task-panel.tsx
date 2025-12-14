@@ -1,6 +1,7 @@
 'use client';
 
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
+import { Draggable } from '@fullcalendar/interaction';
 import { GoogleTask, GoogleTaskList, TaskFilter, TaskPlacement } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,22 +35,30 @@ export function TaskPanel({
   onFilterChange,
   filteredTasks,
 }: TaskPanelProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const placedTaskIds = new Set(placements.map((p) => p.taskId));
 
   const setFilter = onFilterChange;
 
-  const handleDragStart = (e: React.DragEvent, task: GoogleTask) => {
-    e.dataTransfer.setData('text/plain', task.id);
-    e.currentTarget.classList.add('task-item-dragging');
+  // Initialize FullCalendar Draggable for external drag and drop
+  useEffect(() => {
+    if (containerRef.current) {
+      const draggable = new Draggable(containerRef.current, {
+        itemSelector: '[data-task-id]',
+        eventData: (eventEl) => {
+          return {
+            title: eventEl.dataset.taskTitle || 'Task',
+            duration: '00:30', // Default duration, will be overridden by settings
+            create: false, // Don't create event on drop, we handle it manually
+          };
+        },
+      });
 
-    const dragEl = e.currentTarget as HTMLElement;
-    dragEl.dataset.taskId = task.id;
-    dragEl.dataset.taskTitle = task.title;
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    e.currentTarget.classList.remove('task-item-dragging');
-  };
+      return () => {
+        draggable.destroy();
+      };
+    }
+  }, []);
 
   return (
     <div className="h-full flex flex-col">
@@ -138,7 +147,7 @@ export function TaskPanel({
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-2">
+        <div ref={containerRef} className="p-4 space-y-2">
           {loading ? (
             <div className="text-center text-muted-foreground py-8">Loading tasks...</div>
           ) : filteredTasks.length === 0 ? (
@@ -149,8 +158,6 @@ export function TaskPanel({
                 key={task.id}
                 task={task}
                 isPlaced={placedTaskIds.has(task.id)}
-                onDragStart={(e) => handleDragStart(e, task)}
-                onDragEnd={handleDragEnd}
               />
             ))
           )}
@@ -163,19 +170,15 @@ export function TaskPanel({
 interface TaskItemProps {
   task: GoogleTask;
   isPlaced: boolean;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragEnd: (e: React.DragEvent) => void;
 }
 
-function TaskItem({ task, isPlaced, onDragStart, onDragEnd }: TaskItemProps) {
+function TaskItem({ task, isPlaced }: TaskItemProps) {
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
       data-task-id={task.id}
       data-task-title={task.title}
-      className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 cursor-grab active:cursor-grabbing transition-colors"
+      data-task-list-title={task.listTitle}
+      className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 cursor-grab active:cursor-grabbing transition-colors fc-event"
     >
       <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
 

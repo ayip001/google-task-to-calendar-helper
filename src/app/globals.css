@@ -177,3 +177,54 @@
 .drop-zone-invalid {
   background: oklch(0.577 0.245 27.325 / 0.1);
 }
+
+/* Day calendar background styles - gray for non-working hours, white for working hours */
+.day-calendar-container .fc-timegrid-slot {
+  background-color: #f3f4f6 !important;
+}
+
+.day-calendar-container .fc-timegrid-col.fc-day {
+  background-color: #f3f4f6;
+}
+
+.day-calendar-container .fc-non-business {
+  background-color: #f3f4f6 !important;
+}
+
+/* Business hours (working hours) should be white */
+.day-calendar-container .fc-timegrid-col .fc-timegrid-bg-harness:not(:has(.fc-non-business)) {
+  background-color: white;
+}
+
+/* The slot background layer during business hours */
+.day-calendar-container .fc .fc-bg-event {
+  background-color: white !important;
+  opacity: 1 !important;
+}
+
+/* Highlight when selecting time slot */
+.day-calendar-container .fc-highlight {
+  background-color: rgba(66, 133, 244, 0.15) !important;
+}
+
+/* Drag ghost/mirror when dragging external tasks */
+.fc-event-mirror {
+  opacity: 0.7 !important;
+  background-color: #4285f4 !important;
+  border: 2px dashed #4285f4 !important;
+  border-radius: 4px;
+}
+
+/* External drag helper - the ghost that follows the cursor */
+.fc-dragging .fc-event {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Make the draggable items look draggable */
+.fc-event[data-task-id] {
+  cursor: grab;
+}
+
+.fc-event[data-task-id]:active {
+  cursor: grabbing;
+}

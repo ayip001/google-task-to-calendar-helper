@@ -119,12 +119,13 @@ export default function DayPage() {
     }
   };
 
-  const handleExternalDrop = async (taskId: string, taskTitle: string, startTime: string) => {
+  const handleExternalDrop = async (taskId: string, taskTitle: string, startTime: string, listTitle?: string) => {
     try {
       const newPlacement: TaskPlacement = {
         id: `${taskId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         taskId,
         taskTitle,
+        listTitle,
         startTime,
         duration: settings.defaultTaskDuration,
         color: settings.taskColor,

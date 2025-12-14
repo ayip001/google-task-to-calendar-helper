@@ -18,7 +18,7 @@ import { Calendar as CalendarIcon, LogOut, User } from 'lucide-react';
 export default function HomePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -39,8 +39,8 @@ export default function HomePage() {
   }
 
   const handleDateSelect = (date: Date | undefined) => {
-    setSelectedDate(date);
     if (date) {
+      setSelectedDate(date);
       const formattedDate = format(date, 'yyyy-MM-dd');
       router.push(`/day/${formattedDate}`);
     }
