@@ -290,10 +290,6 @@ export function filterTasks(tasks: GoogleTask[], filter: TaskFilter): GoogleTask
       return false;
     }
 
-    if (filter.starred !== undefined && task.starred !== filter.starred) {
-      return false;
-    }
-
     if (filter.hasDueDate !== undefined) {
       const hasDue = !!task.due;
       if (filter.hasDueDate !== hasDue) {

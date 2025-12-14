@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Star, Calendar, GripVertical, Check } from 'lucide-react';
+import { Search, Calendar, GripVertical, Check } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface TaskPanelProps {
@@ -116,32 +116,17 @@ export function TaskPanel({
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="starred"
-              checked={filter.starred || false}
-              onCheckedChange={(checked) =>
-                setFilter({ ...filter, starred: checked ? true : undefined })
-              }
-            />
-            <Label htmlFor="starred" className="text-sm cursor-pointer">
-              Starred only
-            </Label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="hideContainer"
-              checked={filter.hideContainerTasks || false}
-              onCheckedChange={(checked) =>
-                setFilter({ ...filter, hideContainerTasks: checked ? true : undefined })
-              }
-            />
-            <Label htmlFor="hideContainer" className="text-sm cursor-pointer">
-              Hide containers
-            </Label>
-          </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="hideContainer"
+            checked={filter.hideContainerTasks || false}
+            onCheckedChange={(checked) =>
+              setFilter({ ...filter, hideContainerTasks: checked ? true : undefined })
+            }
+          />
+          <Label htmlFor="hideContainer" className="text-sm cursor-pointer">
+            Hide containers
+          </Label>
         </div>
       </div>
 
@@ -184,7 +169,6 @@ function TaskItem({ task, isPlaced }: TaskItemProps) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-medium truncate">{task.title}</span>
-          {task.starred && <Star className="h-4 w-4 text-yellow-500 flex-shrink-0 fill-yellow-500" />}
           {isPlaced && (
             <Badge variant="secondary" className="flex-shrink-0">
               <Check className="h-3 w-3 mr-1" />

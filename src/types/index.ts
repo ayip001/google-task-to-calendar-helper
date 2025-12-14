@@ -19,7 +19,6 @@ export interface TaskPlacement {
   listTitle?: string;
   startTime: string;
   duration: number;
-  color: string;
 }
 
 export interface GoogleTask {
@@ -30,7 +29,6 @@ export interface GoogleTask {
   due?: string;
   parent?: string;
   position?: string;
-  starred?: boolean;
   listId: string;
   listTitle: string;
   hasSubtasks?: boolean;
@@ -74,7 +72,6 @@ export interface TimeSlot {
 
 export interface TaskFilter {
   listId?: string;
-  starred?: boolean;
   hasDueDate?: boolean;
   searchText?: string;
   hideContainerTasks?: boolean;

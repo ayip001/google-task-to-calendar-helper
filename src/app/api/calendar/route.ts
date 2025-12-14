@@ -42,16 +42,17 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { calendarId, placements } = body as {
+    const { calendarId, placements, taskColor } = body as {
       calendarId: string;
       placements: TaskPlacement[];
+      taskColor: string;
     };
 
-    if (!calendarId || !placements || !Array.isArray(placements)) {
+    if (!calendarId || !placements || !Array.isArray(placements) || !taskColor) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    const result = await createCalendarEvents(session.accessToken, calendarId, placements);
+    const result = await createCalendarEvents(session.accessToken, calendarId, placements, taskColor);
 
     return NextResponse.json({
       success: true,
