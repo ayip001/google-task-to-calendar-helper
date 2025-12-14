@@ -41,6 +41,14 @@ export function DayCalendar({
     }
   }, [date]);
 
+  // Set CSS variable on document root for drag ghost color
+  useEffect(() => {
+    document.documentElement.style.setProperty('--task-color', settings.taskColor);
+    return () => {
+      document.documentElement.style.removeProperty('--task-color');
+    };
+  }, [settings.taskColor]);
+
   const calendarEvents: EventInput[] = [
     ...events.map((event) => ({
       id: `event-${event.id}`,
