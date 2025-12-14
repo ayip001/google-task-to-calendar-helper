@@ -18,6 +18,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   minTimeBetweenTasks: DEFAULT_MIN_TIME_BETWEEN_TASKS,
   ignoreContainerTasks: true,
   selectedCalendarId: 'primary',
+  slotMinTime: '06:00',
+  slotMaxTime: '22:00',
 };
 
 export const GOOGLE_CALENDAR_COLORS: Record<string, string> = {

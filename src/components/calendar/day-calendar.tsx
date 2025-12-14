@@ -20,6 +20,8 @@ interface DayCalendarProps {
     defaultTaskDuration: number;
     taskColor: string;
     workingHours: WorkingHours[];
+    slotMinTime: string;
+    slotMaxTime: string;
   };
 }
 
@@ -40,6 +42,14 @@ export function DayCalendar({
       calendarApi.gotoDate(date);
     }
   }, [date]);
+
+  // Set CSS variable on document root for drag ghost color
+  useEffect(() => {
+    document.documentElement.style.setProperty('--task-color', settings.taskColor);
+    return () => {
+      document.documentElement.style.removeProperty('--task-color');
+    };
+  }, [settings.taskColor]);
 
   const calendarEvents: EventInput[] = [
     ...events.map((event) => ({
@@ -111,9 +121,19 @@ export function DayCalendar({
     );
   };
 
+  // Check if a time is in the past
+  const isTimeInPast = (time: Date): boolean => {
+    return time < new Date();
+  };
+
   const handleEventDrop = (info: EventDropArg) => {
     const placementId = info.event.extendedProps?.placementId;
     if (placementId && info.event.start) {
+      // Prevent dropping placements on past times
+      if (isTimeInPast(info.event.start)) {
+        info.revert();
+        return;
+      }
       onPlacementDrop(placementId, info.event.start.toISOString());
     }
   };
@@ -125,6 +145,11 @@ export function DayCalendar({
     const taskListTitle = info.draggedEl.dataset.taskListTitle;
 
     if (taskId && taskTitle && info.event.start) {
+      // Prevent dropping on past times
+      if (isTimeInPast(info.event.start)) {
+        info.event.remove();
+        return;
+      }
       // Remove the temporary event that FullCalendar created
       info.event.remove();
       // Create our own placement through the callback
@@ -152,8 +177,8 @@ export function DayCalendar({
         headerToolbar={false}
         allDaySlot={false}
         slotDuration={`00:${TIME_SLOT_INTERVAL}:00`}
-        slotMinTime="06:00:00"
-        slotMaxTime="22:00:00"
+        slotMinTime={`${settings.slotMinTime}:00`}
+        slotMaxTime={`${settings.slotMaxTime}:00`}
         height="100%"
         events={calendarEvents}
         editable={true}

@@ -78,6 +78,13 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
     { value: '#dc2127', label: 'Tomato' },
   ];
 
+  // Generate hour options for time range dropdowns
+  const hourOptions = Array.from({ length: 24 }, (_, i) => {
+    const hour = i.toString().padStart(2, '0');
+    const label = i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`;
+    return { value: `${hour}:00`, label };
+  });
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -173,6 +180,50 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Calendar Day Range</Label>
+            <div className="flex items-center gap-2">
+              <Select
+                value={localSettings.slotMinTime}
+                onValueChange={(value) =>
+                  setLocalSettings({ ...localSettings, slotMinTime: value })
+                }
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {hourOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span>to</span>
+              <Select
+                value={localSettings.slotMaxTime}
+                onValueChange={(value) =>
+                  setLocalSettings({ ...localSettings, slotMaxTime: value })
+                }
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {hourOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Visible time range on the calendar
+            </p>
           </div>
 
           <div className="space-y-3">

@@ -10,6 +10,8 @@ export interface UserSettings {
   minTimeBetweenTasks: number;
   ignoreContainerTasks: boolean;
   selectedCalendarId: string;
+  slotMinTime: string;
+  slotMaxTime: string;
 }
 
 export interface TaskPlacement {
