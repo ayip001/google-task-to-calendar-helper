@@ -19,6 +19,7 @@ interface ConfirmDialogProps {
   placements: TaskPlacement[];
   onConfirm: () => void;
   saving: boolean;
+  taskColor: string;
 }
 
 export function ConfirmDialog({
@@ -27,6 +28,7 @@ export function ConfirmDialog({
   placements,
   onConfirm,
   saving,
+  taskColor,
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -44,7 +46,7 @@ export function ConfirmDialog({
               <li key={placement.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted">
                 <div
                   className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: placement.color }}
+                  style={{ backgroundColor: taskColor }}
                 />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{placement.taskTitle}</p>

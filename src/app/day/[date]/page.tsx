@@ -128,7 +128,6 @@ export default function DayPage() {
         listTitle,
         startTime,
         duration: settings.defaultTaskDuration,
-        color: settings.taskColor,
       };
 
       await addPlacement(newPlacement);
@@ -171,6 +170,7 @@ export default function DayPage() {
         body: JSON.stringify({
           calendarId: settings.selectedCalendarId,
           placements,
+          taskColor: settings.taskColor,
         }),
       });
 
@@ -300,6 +300,7 @@ export default function DayPage() {
         placements={placements}
         onConfirm={handleSaveToCalendar}
         saving={saving}
+        taskColor={settings.taskColor}
       />
     </div>
   );

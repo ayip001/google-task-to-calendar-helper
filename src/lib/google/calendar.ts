@@ -59,7 +59,8 @@ export async function getEventsForDay(
 export async function createCalendarEvent(
   accessToken: string,
   calendarId: string,
-  placement: TaskPlacement
+  placement: TaskPlacement,
+  taskColor: string
 ): Promise<GoogleCalendarEvent> {
   const calendar = createCalendarClient(accessToken);
 
@@ -76,7 +77,7 @@ export async function createCalendarEvent(
       end: {
         dateTime: endTime.toISOString(),
       },
-      colorId: getGoogleColorId(placement.color),
+      colorId: getGoogleColorId(taskColor),
       description: `Created from Google Task: ${placement.taskId}`,
     },
   });
@@ -100,14 +101,15 @@ export async function createCalendarEvent(
 export async function createCalendarEvents(
   accessToken: string,
   calendarId: string,
-  placements: TaskPlacement[]
+  placements: TaskPlacement[],
+  taskColor: string
 ): Promise<{ success: GoogleCalendarEvent[]; errors: string[] }> {
   const results: GoogleCalendarEvent[] = [];
   const errors: string[] = [];
 
   for (const placement of placements) {
     try {
-      const event = await createCalendarEvent(accessToken, calendarId, placement);
+      const event = await createCalendarEvent(accessToken, calendarId, placement, taskColor);
       results.push(event);
     } catch (error) {
       errors.push(`Failed to create event for "${placement.taskTitle}": ${error}`);

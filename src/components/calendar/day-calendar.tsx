@@ -4,7 +4,7 @@ import { useRef, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import type { EventDropArg, EventInput, DateSelectArg, EventContentArg } from '@fullcalendar/core';
+import type { EventDropArg, EventInput, EventContentArg } from '@fullcalendar/core';
 import { GoogleCalendarEvent, TaskPlacement, WorkingHours } from '@/types';
 import { TIME_SLOT_INTERVAL } from '@/lib/constants';
 import { X } from 'lucide-react';
@@ -59,8 +59,8 @@ export function DayCalendar({
       title: placement.taskTitle,
       start: placement.startTime,
       end: new Date(new Date(placement.startTime).getTime() + placement.duration * 60 * 1000).toISOString(),
-      backgroundColor: placement.color,
-      borderColor: placement.color,
+      backgroundColor: settings.taskColor,
+      borderColor: settings.taskColor,
       editable: true,
       classNames: ['temp-placement'],
       extendedProps: {
@@ -118,20 +118,17 @@ export function DayCalendar({
     }
   };
 
-  const handleSelect = (info: DateSelectArg) => {
-    const calendarApi = calendarRef.current?.getApi();
-    if (calendarApi) {
-      calendarApi.unselect();
-    }
-  };
-
-  const handleDrop = (info: { date: Date; draggedEl: HTMLElement }) => {
+  // Handle external drops from task panel - this fires after FullCalendar validates the drop
+  const handleEventReceive = (info: { event: { start: Date | null; remove: () => void }; draggedEl: HTMLElement }) => {
     const taskId = info.draggedEl.dataset.taskId;
     const taskTitle = info.draggedEl.dataset.taskTitle;
     const taskListTitle = info.draggedEl.dataset.taskListTitle;
 
-    if (taskId && taskTitle) {
-      onExternalDrop(taskId, taskTitle, info.date.toISOString(), taskListTitle);
+    if (taskId && taskTitle && info.event.start) {
+      // Remove the temporary event that FullCalendar created
+      info.event.remove();
+      // Create our own placement through the callback
+      onExternalDrop(taskId, taskTitle, info.event.start.toISOString(), taskListTitle);
     }
   };
 
@@ -143,7 +140,10 @@ export function DayCalendar({
   }));
 
   return (
-    <div className="h-full day-calendar-container">
+    <div
+      className="h-full day-calendar-container"
+      style={{ '--task-color': settings.taskColor } as React.CSSProperties}
+    >
       <FullCalendar
         ref={calendarRef}
         plugins={[timeGridPlugin, interactionPlugin]}
@@ -157,13 +157,11 @@ export function DayCalendar({
         height="100%"
         events={calendarEvents}
         editable={true}
-        selectable={true}
-        selectMirror={true}
+        selectable={false}
         droppable={true}
         eventDrop={handleEventDrop}
         eventContent={renderEventContent}
-        select={handleSelect}
-        drop={handleDrop}
+        eventReceive={handleEventReceive}
         eventOverlap={false}
         slotEventOverlap={false}
         snapDuration={`00:${TIME_SLOT_INTERVAL}:00`}

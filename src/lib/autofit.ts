@@ -37,7 +37,6 @@ export function autoFitTasks(
         taskTitle: task.title,
         startTime: slot.start.toISOString(),
         duration: settings.defaultTaskDuration,
-        color: settings.taskColor,
       };
 
       placements.push(placement);
@@ -169,18 +168,15 @@ function _removeSlotTime(
 
 function _sortTasksByPriority(tasks: GoogleTask[]): GoogleTask[] {
   return [...tasks].sort((a, b) => {
-    const aStarred = a.starred || false;
-    const bStarred = b.starred || false;
     const aHasDue = !!a.due;
     const bHasDue = !!b.due;
 
-    const aPriority = (aStarred ? 2 : 0) + (aHasDue ? 1 : 0);
-    const bPriority = (bStarred ? 2 : 0) + (bHasDue ? 1 : 0);
-
-    if (aPriority !== bPriority) {
-      return bPriority - aPriority;
+    // Tasks with due dates come first
+    if (aHasDue !== bHasDue) {
+      return aHasDue ? -1 : 1;
     }
 
+    // Sort by due date if both have one
     if (aHasDue && bHasDue) {
       return new Date(a.due!).getTime() - new Date(b.due!).getTime();
     }

@@ -51,7 +51,6 @@ export async function getTasksFromList(
     due: item.due || undefined,
     parent: item.parent || undefined,
     position: item.position || undefined,
-    starred: item.title?.startsWith('⭐') || false,
     listId,
     listTitle,
   }));
