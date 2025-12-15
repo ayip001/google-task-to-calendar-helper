@@ -201,8 +201,9 @@ export default function DayPage() {
       <header className="border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => router.push('/')}>
+            <Button variant="ghost" onClick={() => router.push('/')} className="gap-2">
               <Calendar className="h-5 w-5" />
+              <span className="text-sm">Back to Calendar</span>
             </Button>
 
             <div className="flex items-center gap-2">

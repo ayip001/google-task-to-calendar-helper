@@ -19,11 +19,29 @@ function Calendar({
   buttonVariant = "ghost",
   formatters,
   components,
+  onDayMouseEnter,
+  onDayMouseLeave,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
+  onDayMouseEnter?: (date: Date) => void
+  onDayMouseLeave?: () => void
 }) {
   const defaultClassNames = getDefaultClassNames()
+
+  // Create a wrapper DayButton that includes hover callbacks
+  const DayButtonWithHover = React.useCallback(
+    (dayButtonProps: React.ComponentProps<typeof DayButton>) => {
+      return (
+        <CalendarDayButton
+          {...dayButtonProps}
+          onMouseEnter={() => onDayMouseEnter?.(dayButtonProps.day.date)}
+          onMouseLeave={() => onDayMouseLeave?.()}
+        />
+      )
+    },
+    [onDayMouseEnter, onDayMouseLeave]
+  )
 
   return (
     <DayPicker
@@ -158,7 +176,7 @@ function Calendar({
             <ChevronDownIcon className={cn("size-4", className)} {...props} />
           )
         },
-        DayButton: CalendarDayButton,
+        DayButton: DayButtonWithHover,
         WeekNumber: ({ children, ...props }) => {
           return (
             <td {...props}>
