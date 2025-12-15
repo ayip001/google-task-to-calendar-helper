@@ -2,7 +2,7 @@
 
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { format, isBefore, startOfDay } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
@@ -15,15 +15,28 @@ import {
 import { Calendar as CalendarIcon, LogOut, User } from 'lucide-react';
 import { GoogleCalendarEvent } from '@/types';
 import { useSettings } from '@/hooks/use-data';
+import { isUtilityCreatedEvent } from '@/lib/constants';
+
+// Cache key for localStorage
+const getMonthCacheKey = (calendarId: string, year: number, month: number) =>
+  `events-cache:${calendarId}:${year}:${month}`;
+
+// Cache structure stored in localStorage
+interface MonthEventsCache {
+  events: GoogleCalendarEvent[];
+  fetchedAt: number;
+}
 
 export default function HomePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [hoveredDate, setHoveredDate] = useState<Date | null>(null);
-  const [hoveredEvents, setHoveredEvents] = useState<GoogleCalendarEvent[]>([]);
-  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date());
+  const [monthEvents, setMonthEvents] = useState<GoogleCalendarEvent[]>([]);
+  const [loadingMonth, setLoadingMonth] = useState(false);
   const { settings } = useSettings();
+  const fetchingRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -31,40 +44,83 @@ export default function HomePage() {
     }
   }, [status, router]);
 
-  // Fetch events when hovering over a date
-  useEffect(() => {
-    if (!hoveredDate || !settings.selectedCalendarId) {
-      setHoveredEvents([]);
-      return;
+  // Fetch events for the displayed month
+  const fetchMonthEvents = useCallback(async (year: number, month: number) => {
+    if (!settings.selectedCalendarId) return;
+
+    const cacheKey = getMonthCacheKey(settings.selectedCalendarId, year, month);
+
+    // Prevent duplicate fetches
+    if (fetchingRef.current === cacheKey) return;
+
+    // Check localStorage cache first
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsedCache: MonthEventsCache = JSON.parse(cached);
+        // Use cache if less than 5 minutes old
+        if (Date.now() - parsedCache.fetchedAt < 5 * 60 * 1000) {
+          setMonthEvents(parsedCache.events);
+          return;
+        }
+      }
+    } catch {
+      // Ignore localStorage errors
     }
 
-    const fetchEvents = async () => {
-      setLoadingEvents(true);
-      try {
-        const dateStr = format(hoveredDate, 'yyyy-MM-dd');
-        const response = await fetch(
-          `/api/calendar?date=${dateStr}&calendarId=${encodeURIComponent(settings.selectedCalendarId)}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          // Filter out events that were created by this utility (they have specific patterns)
-          const filteredEvents = data.events.filter((event: GoogleCalendarEvent) => {
-            // Keep only events that don't look like task placements
-            // Task placements typically don't have descriptions or have specific patterns
-            return !event.description?.includes('Created by Task to Calendar');
-          });
-          setHoveredEvents(filteredEvents);
-        }
-      } catch (error) {
-        console.error('Failed to fetch events:', error);
-      } finally {
-        setLoadingEvents(false);
-      }
-    };
+    fetchingRef.current = cacheKey;
+    setLoadingMonth(true);
 
-    const timeoutId = setTimeout(fetchEvents, 150); // Debounce
-    return () => clearTimeout(timeoutId);
-  }, [hoveredDate, settings.selectedCalendarId]);
+    try {
+      const response = await fetch(
+        `/api/calendar?type=events&year=${year}&month=${month}&calendarId=${encodeURIComponent(settings.selectedCalendarId)}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        // Filter out events created by this utility using invisible marker
+        const filteredEvents = (data.events as GoogleCalendarEvent[]).filter(
+          (event) => !isUtilityCreatedEvent(event.summary)
+        );
+        setMonthEvents(filteredEvents);
+
+        // Cache in localStorage
+        try {
+          const cacheData: MonthEventsCache = {
+            events: filteredEvents,
+            fetchedAt: Date.now(),
+          };
+          localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+        } catch {
+          // Ignore localStorage errors (quota exceeded, etc.)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch month events:', error);
+    } finally {
+      setLoadingMonth(false);
+      fetchingRef.current = null;
+    }
+  }, [settings.selectedCalendarId]);
+
+  // Fetch events when month changes or on initial load
+  useEffect(() => {
+    const year = displayedMonth.getFullYear();
+    const month = displayedMonth.getMonth();
+    fetchMonthEvents(year, month);
+  }, [displayedMonth, fetchMonthEvents]);
+
+  // Get events for the hovered date from cached month events
+  const getEventsForDate = useCallback((date: Date): GoogleCalendarEvent[] => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return monthEvents.filter((event) => {
+      const eventDate = event.start.dateTime
+        ? format(new Date(event.start.dateTime), 'yyyy-MM-dd')
+        : event.start.date;
+      return eventDate === dateStr;
+    });
+  }, [monthEvents]);
+
+  const hoveredEvents = hoveredDate ? getEventsForDate(hoveredDate) : [];
 
   if (status === 'loading') {
     return (
@@ -146,6 +202,8 @@ export default function HomePage() {
         <Calendar
           mode="single"
           selected={selectedDate}
+          month={displayedMonth}
+          onMonthChange={setDisplayedMonth}
           onSelect={handleDateSelect}
           disabled={isDateDisabled}
           onDayMouseEnter={(date) => setHoveredDate(date)}
@@ -155,7 +213,9 @@ export default function HomePage() {
 
         {/* Event preview section */}
         <div className="mt-6 w-full max-w-sm min-h-[120px]">
-          {hoveredDate && (
+          {loadingMonth && !monthEvents.length ? (
+            <div className="text-sm text-muted-foreground text-center">Loading events...</div>
+          ) : hoveredDate ? (
             <div className="flex flex-col gap-3">
               <div className="text-sm font-medium text-center">
                 {hoveredDate.toLocaleDateString('en-US', {
@@ -165,21 +225,17 @@ export default function HomePage() {
                 })}
               </div>
 
-              {loadingEvents ? (
-                <div className="text-sm text-muted-foreground text-center">Loading...</div>
-              ) : displayEvents.length > 0 ? (
+              {displayEvents.length > 0 ? (
                 <div className="flex flex-col gap-2">
                   {displayEvents.map((event) => (
                     <div
                       key={event.id}
-                      className="bg-muted relative rounded-md p-2 pl-6 text-sm after:absolute after:inset-y-2 after:left-2 after:w-1 after:rounded-full"
-                      style={{ '--event-color': getEventColor(event.colorId) } as React.CSSProperties}
+                      className="bg-muted relative rounded-md p-2 pl-6 text-sm"
                     >
-                      <style>{`
-                        [style*="--event-color"]::after {
-                          background-color: var(--event-color);
-                        }
-                      `}</style>
+                      <div
+                        className="absolute inset-y-2 left-2 w-1 rounded-full"
+                        style={{ backgroundColor: getEventColor(event.colorId) }}
+                      />
                       <div className="font-medium truncate">{event.summary}</div>
                       <div className="text-muted-foreground text-xs">
                         {event.start.dateTime
@@ -203,7 +259,7 @@ export default function HomePage() {
                 </div>
               )}
             </div>
-          )}
+          ) : null}
         </div>
       </main>
     </div>

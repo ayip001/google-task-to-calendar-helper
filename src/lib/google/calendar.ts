@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { GoogleCalendarEvent, GoogleCalendar, TaskPlacement } from '@/types';
+import { UTILITY_MARKER } from '@/lib/constants';
 
 export function createCalendarClient(accessToken: string) {
   const auth = new google.auth.OAuth2();
@@ -56,6 +57,46 @@ export async function getEventsForDay(
     }));
 }
 
+export async function getEventsForMonth(
+  accessToken: string,
+  calendarId: string,
+  year: number,
+  month: number // 0-indexed (0 = January)
+): Promise<GoogleCalendarEvent[]> {
+  const calendar = createCalendarClient(accessToken);
+
+  // Get first day of the month
+  const startOfMonth = new Date(year, month, 1);
+  // Get last day of the month (day 0 of next month = last day of current month)
+  const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
+
+  const response = await calendar.events.list({
+    calendarId,
+    timeMin: startOfMonth.toISOString(),
+    timeMax: endOfMonth.toISOString(),
+    singleEvents: true,
+    orderBy: 'startTime',
+    maxResults: 2500, // Google Calendar API max
+  });
+
+  return (response.data.items || []).map((item) => ({
+    id: item.id!,
+    summary: item.summary || 'Untitled Event',
+    description: item.description ?? undefined,
+    start: {
+      dateTime: item.start?.dateTime ?? undefined,
+      date: item.start?.date ?? undefined,
+      timeZone: item.start?.timeZone ?? undefined,
+    },
+    end: {
+      dateTime: item.end?.dateTime ?? undefined,
+      date: item.end?.date ?? undefined,
+      timeZone: item.end?.timeZone ?? undefined,
+    },
+    colorId: item.colorId ?? undefined,
+  }));
+}
+
 export async function createCalendarEvent(
   accessToken: string,
   calendarId: string,
@@ -70,7 +111,8 @@ export async function createCalendarEvent(
   const response = await calendar.events.insert({
     calendarId,
     requestBody: {
-      summary: placement.taskTitle,
+      // Append invisible marker to identify events created by this utility
+      summary: placement.taskTitle + UTILITY_MARKER,
       start: {
         dateTime: startTime.toISOString(),
       },
@@ -78,7 +120,6 @@ export async function createCalendarEvent(
         dateTime: endTime.toISOString(),
       },
       colorId: getGoogleColorId(taskColor),
-      description: `Created from Google Task: ${placement.taskId}`,
     },
   });
 
