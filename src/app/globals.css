@@ -187,9 +187,9 @@
   background-color: white;
 }
 
-/* Non-business hours (outside working hours) should be gray */
+/* Non-business hours (outside working hours) should be gray with opacity so gridlines show */
 .day-calendar-container .fc-non-business {
-  background-color: #f3f4f6 !important;
+  background-color: rgba(243, 244, 246, 0.5) !important;
 }
 
 /* Highlight when selecting time slot */

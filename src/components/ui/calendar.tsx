@@ -11,6 +11,12 @@ import { DayButton, DayPicker, getDefaultClassNames } from "react-day-picker"
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
 
+// Event dot color type
+export interface DayEvent {
+  colorId?: string
+  start: { dateTime?: string; date?: string }
+}
+
 function Calendar({
   className,
   classNames,
@@ -19,11 +25,33 @@ function Calendar({
   buttonVariant = "ghost",
   formatters,
   components,
+  onDayMouseEnter,
+  onDayMouseLeave,
+  getDayEvents,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
+  onDayMouseEnter?: (date: Date) => void
+  onDayMouseLeave?: () => void
+  getDayEvents?: (date: Date) => DayEvent[]
 }) {
   const defaultClassNames = getDefaultClassNames()
+
+  // Create a wrapper DayButton that includes hover callbacks and event dots
+  const DayButtonWithHover = React.useCallback(
+    (dayButtonProps: React.ComponentProps<typeof DayButton>) => {
+      const events = getDayEvents?.(dayButtonProps.day.date) || []
+      return (
+        <CalendarDayButton
+          {...dayButtonProps}
+          events={events}
+          onMouseEnter={() => onDayMouseEnter?.(dayButtonProps.day.date)}
+          onMouseLeave={() => onDayMouseLeave?.()}
+        />
+      )
+    },
+    [onDayMouseEnter, onDayMouseLeave, getDayEvents]
+  )
 
   return (
     <DayPicker
@@ -158,7 +186,7 @@ function Calendar({
             <ChevronDownIcon className={cn("size-4", className)} {...props} />
           )
         },
-        DayButton: CalendarDayButton,
+        DayButton: DayButtonWithHover,
         WeekNumber: ({ children, ...props }) => {
           return (
             <td {...props}>
@@ -175,18 +203,43 @@ function Calendar({
   )
 }
 
+// Map Google Calendar colorId to actual colors
+const GOOGLE_COLORS: Record<string, string> = {
+  '1': '#a4bdfc',
+  '2': '#7ae7bf',
+  '3': '#dbadff',
+  '4': '#ff887c',
+  '5': '#fbd75b',
+  '6': '#ffb878',
+  '7': '#46d6db',
+  '8': '#e1e1e1',
+  '9': '#5484ed',
+  '10': '#51b749',
+  '11': '#dc2127',
+}
+
 function CalendarDayButton({
   className,
   day,
   modifiers,
+  events = [],
   ...props
-}: React.ComponentProps<typeof DayButton>) {
+}: React.ComponentProps<typeof DayButton> & { events?: DayEvent[] }) {
   const defaultClassNames = getDefaultClassNames()
 
   const ref = React.useRef<HTMLButtonElement>(null)
   React.useEffect(() => {
     if (modifiers.focused) ref.current?.focus()
   }, [modifiers.focused])
+
+  // Sort events by start time and take first 3
+  const sortedEvents = [...events]
+    .sort((a, b) => {
+      const aTime = a.start.dateTime || a.start.date || ''
+      const bTime = b.start.dateTime || b.start.date || ''
+      return aTime.localeCompare(bTime)
+    })
+    .slice(0, 3)
 
   return (
     <Button
@@ -204,12 +257,25 @@ function CalendarDayButton({
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
       className={cn(
-        "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 dark:hover:text-accent-foreground flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] data-[range-end=true]:rounded-md data-[range-end=true]:rounded-r-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-md data-[range-start=true]:rounded-l-md [&>span]:text-xs [&>span]:opacity-70",
+        "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 dark:hover:text-accent-foreground flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-0.5 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] data-[range-end=true]:rounded-md data-[range-end=true]:rounded-r-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-md data-[range-start=true]:rounded-l-md [&>span]:text-xs [&>span]:opacity-70",
         defaultClassNames.day,
         className
       )}
       {...props}
-    />
+    >
+      {day.date.getDate()}
+      {sortedEvents.length > 0 && (
+        <div className="flex gap-0.5 justify-center">
+          {sortedEvents.map((event, i) => (
+            <div
+              key={i}
+              className="w-1 h-1 rounded-full"
+              style={{ backgroundColor: GOOGLE_COLORS[event.colorId || ''] || '#4285f4' }}
+            />
+          ))}
+        </div>
+      )}
+    </Button>
   )
 }
 

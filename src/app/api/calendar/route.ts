@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { getCalendars, getEventsForDay, createCalendarEvents } from '@/lib/google/calendar';
+import { getCalendars, getEventsForDay, getEventsForMonth, createCalendarEvents } from '@/lib/google/calendar';
 import { TaskPlacement } from '@/types';
 
 export async function GET(request: Request) {
@@ -13,6 +13,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type');
   const date = searchParams.get('date');
+  const year = searchParams.get('year');
+  const month = searchParams.get('month');
   const calendarId = searchParams.get('calendarId') || 'primary';
 
   try {
@@ -21,6 +23,18 @@ export async function GET(request: Request) {
       return NextResponse.json(calendars);
     }
 
+    // Month-based events fetching
+    if (type === 'events' && year && month) {
+      const events = await getEventsForMonth(
+        session.accessToken,
+        calendarId,
+        parseInt(year, 10),
+        parseInt(month, 10)
+      );
+      return NextResponse.json({ events });
+    }
+
+    // Day-based events fetching (legacy, still used by day view)
     if (type === 'events' && date) {
       const events = await getEventsForDay(session.accessToken, calendarId, date);
       return NextResponse.json(events);

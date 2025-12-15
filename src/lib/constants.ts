@@ -1,6 +1,15 @@
 import { UserSettings } from '@/types';
 
 export const DEFAULT_TASK_DURATION = 30;
+
+// Zero-Width Space (U+200B) used to mark events created by this utility
+// This is invisible in the UI but can be detected programmatically
+export const UTILITY_MARKER = '\u200B';
+
+// Helper to check if an event was created by this utility
+export function isUtilityCreatedEvent(summary: string): boolean {
+  return summary.endsWith(UTILITY_MARKER);
+}
 export const DEFAULT_TASK_COLOR = '#4285F4';
 export const DEFAULT_MIN_TIME_BETWEEN_TASKS = 15;
 export const TIME_SLOT_INTERVAL = 15;
