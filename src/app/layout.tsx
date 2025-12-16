@@ -13,8 +13,8 @@ export const metadata: Metadata = {
   title: 'Google Task to Calendar Helper',
   description: 'Schedule your Google Tasks onto your Calendar with ease',
   icons: {
-    icon: '/tasks2cal favicon.png',
-    apple: '/tasks2cal webclip.png',
+    icon: '/tasks2cal-favicon.png',
+    apple: '/tasks2cal-webclip.png',
   },
 };
 
