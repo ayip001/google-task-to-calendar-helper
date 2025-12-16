@@ -265,10 +265,13 @@ export function useAutoFit() {
     setLoading(true);
 
     try {
+      // Pass timezone offset in minutes (e.g., -480 for UTC+8)
+      const timezoneOffset = new Date().getTimezoneOffset();
+
       const res = await fetch('/api/autofit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, tasks }),
+        body: JSON.stringify({ date, tasks, timezoneOffset }),
       });
 
       if (!res.ok) {

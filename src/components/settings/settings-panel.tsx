@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { UserSettings, GoogleCalendar, WorkingHours } from '@/types';
+import { useState, useMemo } from 'react';
+import { UserSettings, GoogleCalendar } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,13 +22,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Settings, Plus, X } from 'lucide-react';
-import { GOOGLE_CALENDAR_COLORS } from '@/lib/constants';
+import { Settings, Plus, X, AlertTriangle } from 'lucide-react';
 
 interface SettingsPanelProps {
   settings: UserSettings;
   calendars: GoogleCalendar[];
   onSave: (updates: Partial<UserSettings>) => Promise<void>;
+}
+
+// Convert HH:MM to minutes since midnight
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+// Format time based on 12h/24h preference
+function formatTime(time: string, format: '12h' | '24h'): string {
+  const [hours, minutes] = time.split(':').map(Number);
+  if (format === '24h') {
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  }
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
 }
 
 export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProps) {
@@ -79,11 +95,72 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
   ];
 
   // Generate hour options for time range dropdowns
-  const hourOptions = Array.from({ length: 24 }, (_, i) => {
-    const hour = i.toString().padStart(2, '0');
-    const label = i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`;
-    return { value: `${hour}:00`, label };
-  });
+  const hourOptions = useMemo(() => {
+    return Array.from({ length: 24 }, (_, i) => {
+      const value = `${i.toString().padStart(2, '0')}:00`;
+      return { value, label: formatTime(value, localSettings.timeFormat) };
+    });
+  }, [localSettings.timeFormat]);
+
+  // Check if calendar range is valid (at least 1 hour)
+  const calendarRangeValid = useMemo(() => {
+    const minMinutes = timeToMinutes(localSettings.slotMinTime);
+    const maxMinutes = timeToMinutes(localSettings.slotMaxTime);
+    return maxMinutes - minMinutes >= 60;
+  }, [localSettings.slotMinTime, localSettings.slotMaxTime]);
+
+  // Check which working hours are outside calendar range
+  const workingHoursWarnings = useMemo(() => {
+    const calendarMin = timeToMinutes(localSettings.slotMinTime);
+    const calendarMax = timeToMinutes(localSettings.slotMaxTime);
+
+    return localSettings.workingHours.map((hours, index) => {
+      const start = timeToMinutes(hours.start);
+      const end = timeToMinutes(hours.end);
+
+      if (start < calendarMin || end > calendarMax) {
+        return `Range ${index + 1} (${formatTime(hours.start, localSettings.timeFormat)} - ${formatTime(hours.end, localSettings.timeFormat)}) is outside calendar view`;
+      }
+      return null;
+    }).filter(Boolean);
+  }, [localSettings.workingHours, localSettings.slotMinTime, localSettings.slotMaxTime, localSettings.timeFormat]);
+
+  // Handle calendar range change with validation
+  const handleSlotMinTimeChange = (value: string) => {
+    const newMin = timeToMinutes(value);
+    const currentMax = timeToMinutes(localSettings.slotMaxTime);
+
+    // Ensure at least 1 hour gap
+    if (currentMax - newMin < 60) {
+      // Adjust max time to be 1 hour after new min
+      const newMaxHour = Math.min(23, Math.floor(newMin / 60) + 1);
+      setLocalSettings({
+        ...localSettings,
+        slotMinTime: value,
+        slotMaxTime: `${newMaxHour.toString().padStart(2, '0')}:00`,
+      });
+    } else {
+      setLocalSettings({ ...localSettings, slotMinTime: value });
+    }
+  };
+
+  const handleSlotMaxTimeChange = (value: string) => {
+    const currentMin = timeToMinutes(localSettings.slotMinTime);
+    const newMax = timeToMinutes(value);
+
+    // Ensure at least 1 hour gap
+    if (newMax - currentMin < 60) {
+      // Adjust min time to be 1 hour before new max
+      const newMinHour = Math.max(0, Math.floor(newMax / 60) - 1);
+      setLocalSettings({
+        ...localSettings,
+        slotMinTime: `${newMinHour.toString().padStart(2, '0')}:00`,
+        slotMaxTime: value,
+      });
+    } else {
+      setLocalSettings({ ...localSettings, slotMaxTime: value });
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -123,6 +200,24 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
               max={60}
               step={5}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="timeFormat">Time Format</Label>
+            <Select
+              value={localSettings.timeFormat}
+              onValueChange={(value: '12h' | '24h') =>
+                setLocalSettings({ ...localSettings, timeFormat: value })
+              }
+            >
+              <SelectTrigger id="timeFormat">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="12h">12-hour (AM/PM)</SelectItem>
+                <SelectItem value="24h">24-hour</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
@@ -187,9 +282,7 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
             <div className="flex items-center gap-2">
               <Select
                 value={localSettings.slotMinTime}
-                onValueChange={(value) =>
-                  setLocalSettings({ ...localSettings, slotMinTime: value })
-                }
+                onValueChange={handleSlotMinTimeChange}
               >
                 <SelectTrigger className="w-[120px]">
                   <SelectValue />
@@ -205,9 +298,7 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
               <span>to</span>
               <Select
                 value={localSettings.slotMaxTime}
-                onValueChange={(value) =>
-                  setLocalSettings({ ...localSettings, slotMaxTime: value })
-                }
+                onValueChange={handleSlotMaxTimeChange}
               >
                 <SelectTrigger className="w-[120px]">
                   <SelectValue />
@@ -222,8 +313,21 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
               </Select>
             </div>
             <p className="text-xs text-muted-foreground">
-              Visible time range on the calendar
+              Visible time range on the calendar (minimum 1 hour)
             </p>
+            {workingHoursWarnings.length > 0 && (
+              <div className="flex items-start gap-2 text-xs text-amber-600 mt-2">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Working hours outside calendar range:</p>
+                  <ul className="list-disc list-inside">
+                    {workingHoursWarnings.map((warning, i) => (
+                      <li key={i}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-3">
