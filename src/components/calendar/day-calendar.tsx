@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
@@ -16,6 +16,7 @@ interface DayCalendarProps {
   onPlacementDrop: (placementId: string, newStartTime: string) => void;
   onExternalDrop: (taskId: string, taskTitle: string, startTime: string, taskListTitle?: string) => void;
   onPlacementClick: (placementId: string) => void;
+  onPastTimeDrop?: () => void;
   settings: {
     defaultTaskDuration: number;
     taskColor: string;
@@ -32,6 +33,7 @@ export function DayCalendar({
   onPlacementDrop,
   onExternalDrop,
   onPlacementClick,
+  onPastTimeDrop,
   settings,
 }: DayCalendarProps) {
   const calendarRef = useRef<FullCalendar>(null);
@@ -50,6 +52,45 @@ export function DayCalendar({
       document.documentElement.style.removeProperty('--task-color');
     };
   }, [settings.taskColor]);
+
+  // Determine if current time is outside visible range (for boundary indicator)
+  const [nowIndicatorPosition, setNowIndicatorPosition] = useState<'top' | 'bottom' | null>(null);
+
+  useEffect(() => {
+    const checkNowPosition = () => {
+      const now = new Date();
+      const [year, month, day] = date.split('-').map(Number);
+      const viewDate = new Date(year, month - 1, day);
+
+      // Only show boundary indicator if viewing today
+      if (
+        now.getFullYear() !== viewDate.getFullYear() ||
+        now.getMonth() !== viewDate.getMonth() ||
+        now.getDate() !== viewDate.getDate()
+      ) {
+        setNowIndicatorPosition(null);
+        return;
+      }
+
+      const [minHour, minMin] = settings.slotMinTime.split(':').map(Number);
+      const [maxHour, maxMin] = settings.slotMaxTime.split(':').map(Number);
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const minMinutes = minHour * 60 + minMin;
+      const maxMinutes = maxHour * 60 + maxMin;
+
+      if (currentMinutes < minMinutes) {
+        setNowIndicatorPosition('top');
+      } else if (currentMinutes >= maxMinutes) {
+        setNowIndicatorPosition('bottom');
+      } else {
+        setNowIndicatorPosition(null);
+      }
+    };
+
+    checkNowPosition();
+    const interval = setInterval(checkNowPosition, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [date, settings.slotMinTime, settings.slotMaxTime]);
 
   const calendarEvents: EventInput[] = [
     ...events.map((event) => ({
@@ -132,6 +173,7 @@ export function DayCalendar({
       // Prevent dropping placements on past times
       if (isTimeInPast(info.event.start)) {
         info.revert();
+        onPastTimeDrop?.();
         return;
       }
       onPlacementDrop(placementId, info.event.start.toISOString());
@@ -148,6 +190,7 @@ export function DayCalendar({
       // Prevent dropping on past times
       if (isTimeInPast(info.event.start)) {
         info.event.remove();
+        onPastTimeDrop?.();
         return;
       }
       // Remove the temporary event that FullCalendar created
@@ -170,9 +213,20 @@ export function DayCalendar({
 
   return (
     <div
-      className="h-full day-calendar-container"
+      className="h-full day-calendar-container relative"
       style={{ '--task-color': settings.taskColor } as React.CSSProperties}
     >
+      {/* Boundary now indicator when current time is outside visible range */}
+      {nowIndicatorPosition && (
+        <div
+          className={`absolute left-0 right-0 z-10 flex items-center pointer-events-none ${
+            nowIndicatorPosition === 'top' ? 'top-0' : 'bottom-0'
+          }`}
+        >
+          <div className="w-3 h-3 rounded-full bg-[#ea4335] -ml-1.5" />
+          <div className="flex-1 h-[3px] bg-[#ea4335]" />
+        </div>
+      )}
       <FullCalendar
         ref={calendarRef}
         plugins={[timeGridPlugin, interactionPlugin]}

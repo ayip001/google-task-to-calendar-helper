@@ -25,6 +25,15 @@ Preview your scheduled tasks, then save them all to Google Calendar at once.
 
 ---
 
+## How to Use
+
+1. Sign in with your Google account
+2. Select a day from the calendar
+3. Drag tasks onto time slots, or click **Auto-fit** to fill your schedule
+4. Click **Save** to add them to your Google Calendar
+
+---
+
 ## Screenshots
 
 | Month View | Day View |
@@ -33,23 +42,19 @@ Preview your scheduled tasks, then save them all to Google Calendar at once.
 
 ---
 
-## Getting Started
+## Self-Hosting
 
-### 1. Create Google Cloud Credentials
+<details>
+<summary>Developer setup instructions</summary>
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project
-3. Enable **Google Calendar API** and **Google Tasks API**
-4. Create OAuth 2.0 credentials (Web application)
-5. Add redirect URI: `http://localhost:3000/api/auth/callback/google`
+### Prerequisites
 
-### 2. Set Up Environment
+- Node.js 18+
+- Google Cloud project with Calendar and Tasks APIs enabled
+- Upstash Redis database
 
-```bash
-cp .env.example .env.local
-```
+### Environment Variables
 
-Fill in your credentials:
 ```env
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
@@ -58,38 +63,18 @@ NEXTAUTH_SECRET=your-secret-key
 REDIS_URL=redis://default:token@endpoint.upstash.io:6379
 ```
 
-### 3. Install & Run
+### Run Locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
-
----
-
-## Deploy
-
-**Vercel (Recommended)**
+### Deploy to Vercel
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
 
-1. Import your GitHub repo
-2. Add environment variables
-3. Deploy
-
-Don't forget to update your Google OAuth redirect URI for production.
-
----
-
-## Tech Stack
-
-- Next.js 16 (App Router)
-- Tailwind CSS + shadcn/ui
-- FullCalendar
-- Upstash Redis
-- Google Calendar & Tasks APIs
+</details>
 
 ---
 

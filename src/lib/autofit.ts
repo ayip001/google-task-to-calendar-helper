@@ -106,9 +106,9 @@ function _calculateAvailableSlots(
 
 function _parseTimeToDate(date: string, time: string): Date {
   const [hours, minutes] = time.split(':').map(Number);
-  const d = new Date(date);
-  d.setHours(hours, minutes, 0, 0);
-  return d;
+  // Parse date components explicitly to avoid UTC vs local timezone issues
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(year, month - 1, day, hours, minutes, 0, 0);
 }
 
 function _getBlockedTimes(

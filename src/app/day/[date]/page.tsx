@@ -279,6 +279,7 @@ export default function DayPage() {
             onPlacementDrop={handlePlacementDrop}
             onExternalDrop={handleExternalDrop}
             onPlacementClick={handlePlacementClick}
+            onPastTimeDrop={() => toast.error('Cannot place tasks in the past')}
             settings={settings}
           />
         </div>
