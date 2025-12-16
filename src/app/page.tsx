@@ -12,7 +12,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Calendar as CalendarIcon, LogOut, User } from 'lucide-react';
+import { LogOut, User } from 'lucide-react';
+import Image from 'next/image';
 import { GoogleCalendarEvent } from '@/types';
 import { useSettings } from '@/hooks/use-data';
 import { isUtilityCreatedEvent } from '@/lib/constants';
@@ -171,7 +172,13 @@ export default function HomePage() {
       <header className="border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CalendarIcon className="h-6 w-6 text-blue-600" />
+            <Image 
+              src="/tasks2cal logo.svg" 
+              alt="Tasks2Cal Logo" 
+              width={48} 
+              height={24}
+              className="h-6 w-12"
+            />
             <h1 className="text-xl font-semibold">Task to Calendar</h1>
           </div>
           <DropdownMenu>

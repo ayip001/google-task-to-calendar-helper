@@ -23,6 +23,7 @@ interface DayCalendarProps {
     workingHours: WorkingHours[];
     slotMinTime: string;
     slotMaxTime: string;
+    timeFormat: '12h' | '24h';
   };
 }
 
@@ -37,6 +38,7 @@ export function DayCalendar({
   settings,
 }: DayCalendarProps) {
   const calendarRef = useRef<FullCalendar>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (calendarRef.current) {
@@ -91,6 +93,41 @@ export function DayCalendar({
     const interval = setInterval(checkNowPosition, 60000); // Check every minute
     return () => clearInterval(interval);
   }, [date, settings.slotMinTime, settings.slotMaxTime]);
+
+  // Inject boundary indicator into FullCalendar's scroll container
+  useEffect(() => {
+    if (!containerRef.current || !nowIndicatorPosition) return;
+
+    // Find the time grid body inside FullCalendar
+    const timeGridBody = containerRef.current.querySelector('.fc-timegrid-body');
+    if (!timeGridBody) return;
+
+    // Create the indicator element
+    const indicator = document.createElement('div');
+    indicator.className = 'fc-boundary-now-indicator';
+    indicator.style.cssText = `
+      position: absolute;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      pointer-events: none;
+      z-index: 10;
+      ${nowIndicatorPosition === 'top' ? 'top: 0;' : 'bottom: 0;'}
+    `;
+    indicator.innerHTML = `
+      <div style="width: 12px; height: 12px; border-radius: 50%; background-color: #ea4335; margin-left: -6px;"></div>
+      <div style="flex: 1; height: 3px; background-color: #ea4335;"></div>
+    `;
+
+    // Ensure timeGridBody has relative positioning
+    (timeGridBody as HTMLElement).style.position = 'relative';
+    timeGridBody.appendChild(indicator);
+
+    return () => {
+      indicator.remove();
+    };
+  }, [nowIndicatorPosition]);
 
   const calendarEvents: EventInput[] = [
     ...events.map((event) => ({
@@ -213,20 +250,10 @@ export function DayCalendar({
 
   return (
     <div
-      className="h-full day-calendar-container relative"
+      ref={containerRef}
+      className="h-full day-calendar-container"
       style={{ '--task-color': settings.taskColor } as React.CSSProperties}
     >
-      {/* Boundary now indicator when current time is outside visible range */}
-      {nowIndicatorPosition && (
-        <div
-          className={`absolute left-0 right-0 z-10 flex items-center pointer-events-none ${
-            nowIndicatorPosition === 'top' ? 'top-0' : 'bottom-0'
-          }`}
-        >
-          <div className="w-3 h-3 rounded-full bg-[#ea4335] -ml-1.5" />
-          <div className="flex-1 h-[3px] bg-[#ea4335]" />
-        </div>
-      )}
       <FullCalendar
         ref={calendarRef}
         plugins={[timeGridPlugin, interactionPlugin]}

@@ -12,6 +12,7 @@ export interface UserSettings {
   selectedCalendarId: string;
   slotMinTime: string;
   slotMaxTime: string;
+  timeFormat: '12h' | '24h';
 }
 
 export interface TaskPlacement {

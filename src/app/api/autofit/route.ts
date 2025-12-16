@@ -15,7 +15,11 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { date, tasks } = body as { date: string; tasks: GoogleTask[] };
+    const { date, tasks, timezoneOffset } = body as {
+      date: string;
+      tasks: GoogleTask[];
+      timezoneOffset?: number;
+    };
 
     if (!date || !tasks || !Array.isArray(tasks)) {
       return NextResponse.json({ error: 'Date and tasks required' }, { status: 400 });
@@ -25,7 +29,8 @@ export async function POST(request: Request) {
     const events = await getEventsForDay(session.accessToken, settings.selectedCalendarId, date);
     const existingPlacements = await getPlacements(session.user.email, date);
 
-    const result = autoFitTasks(tasks, events, existingPlacements, settings, date);
+    // Pass timezone offset (default to 0 if not provided)
+    const result = autoFitTasks(tasks, events, existingPlacements, settings, date, timezoneOffset ?? 0);
 
     const allPlacements = [...existingPlacements, ...result.placements];
     await setPlacements(session.user.email, date, allPlacements);

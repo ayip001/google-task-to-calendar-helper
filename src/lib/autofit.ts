@@ -6,13 +6,15 @@ export function autoFitTasks(
   existingEvents: GoogleCalendarEvent[],
   existingPlacements: TaskPlacement[],
   settings: UserSettings,
-  date: string
+  date: string,
+  timezoneOffset: number = 0 // Minutes offset from UTC (e.g., -480 for UTC+8)
 ): AutoFitResult {
   const availableSlots = _calculateAvailableSlots(
     existingEvents,
     existingPlacements,
     settings,
-    date
+    date,
+    timezoneOffset
   );
 
   const filteredTasks = settings.ignoreContainerTasks
@@ -54,44 +56,71 @@ export function autoFitTasks(
   return { placements, unplacedTasks, message };
 }
 
-// Round up to the next slot interval
+// Round up to the next slot interval (works with UTC timestamps)
 function _roundUpToNextSlot(time: Date): Date {
-  const minutes = time.getMinutes();
+  const minutes = time.getUTCMinutes();
   const remainder = minutes % TIME_SLOT_INTERVAL;
 
-  if (remainder === 0 && time.getSeconds() === 0 && time.getMilliseconds() === 0) {
+  if (remainder === 0 && time.getUTCSeconds() === 0 && time.getUTCMilliseconds() === 0) {
     return new Date(time);
   }
 
-  const roundedMinutes = minutes + (TIME_SLOT_INTERVAL - remainder);
   const result = new Date(time);
-  result.setMinutes(roundedMinutes, 0, 0);
+  result.setUTCMinutes(minutes + (TIME_SLOT_INTERVAL - remainder), 0, 0);
   return result;
+}
+
+// Parse a time string (HH:MM) to a Date in the user's timezone
+// timezoneOffset is in minutes (e.g., -480 for UTC+8)
+function _parseTimeToDate(date: string, time: string, timezoneOffset: number): Date {
+  const [hours, minutes] = time.split(':').map(Number);
+  const [year, month, day] = date.split('-').map(Number);
+
+  // Create date in UTC, then adjust for user's timezone
+  // Formula: UTC = local + offset, so local time in UTC = UTC value - offset
+  const utcTime = Date.UTC(year, month - 1, day, hours, minutes, 0, 0);
+  return new Date(utcTime + timezoneOffset * 60 * 1000);
 }
 
 function _calculateAvailableSlots(
   events: GoogleCalendarEvent[],
   placements: TaskPlacement[],
   settings: UserSettings,
-  date: string
+  date: string,
+  timezoneOffset: number
 ): TimeSlot[] {
   const slots: TimeSlot[] = [];
 
+  // First, constrain to calendar visible range
+  const calendarStart = _parseTimeToDate(date, settings.slotMinTime, timezoneOffset);
+  const calendarEnd = _parseTimeToDate(date, settings.slotMaxTime, timezoneOffset);
+
+  // Create slots from working hours, but constrain to calendar range
   for (const hours of settings.workingHours) {
-    const start = _parseTimeToDate(date, hours.start);
-    const end = _parseTimeToDate(date, hours.end);
-    slots.push({ start, end });
+    let start = _parseTimeToDate(date, hours.start, timezoneOffset);
+    let end = _parseTimeToDate(date, hours.end, timezoneOffset);
+
+    // Constrain to calendar visible range
+    if (start < calendarStart) start = new Date(calendarStart);
+    if (end > calendarEnd) end = new Date(calendarEnd);
+
+    // Only add if there's still a valid range
+    if (start < end) {
+      slots.push({ start, end });
+    }
   }
 
-  // Check if this is today by comparing date strings
+  // Check if this is today (in user's timezone)
   const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  // Convert now to user's timezone for comparison
+  // We need to get the date string in user's timezone
+  const userNow = new Date(now.getTime() - timezoneOffset * 60 * 1000);
+  const todayStr = `${userNow.getUTCFullYear()}-${String(userNow.getUTCMonth() + 1).padStart(2, '0')}-${String(userNow.getUTCDate()).padStart(2, '0')}`;
 
   // If we're looking at today, exclude past times
   if (date === todayStr) {
     const roundedNow = _roundUpToNextSlot(now);
-    // Subtract from the beginning of the day up to the rounded current time
-    const dayStart = _parseTimeToDate(date, '00:00');
+    const dayStart = _parseTimeToDate(date, '00:00', timezoneOffset);
     _subtractTimeFromSlots(slots, dayStart, roundedNow);
   }
 
@@ -102,13 +131,6 @@ function _calculateAvailableSlots(
   }
 
   return slots.filter((slot) => slot.end.getTime() > slot.start.getTime());
-}
-
-function _parseTimeToDate(date: string, time: string): Date {
-  const [hours, minutes] = time.split(':').map(Number);
-  // Parse date components explicitly to avoid UTC vs local timezone issues
-  const [year, month, day] = date.split('-').map(Number);
-  return new Date(year, month - 1, day, hours, minutes, 0, 0);
 }
 
 function _getBlockedTimes(
