@@ -16,6 +16,7 @@ export async function getCalendars(accessToken: string): Promise<GoogleCalendar[
     id: item.id!,
     summary: item.summary!,
     primary: item.primary ?? undefined,
+    timeZone: item.timeZone ?? undefined,
   }));
 }
 

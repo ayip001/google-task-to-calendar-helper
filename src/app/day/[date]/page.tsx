@@ -62,7 +62,7 @@ export default function DayPage() {
 
   const { tasks, taskLists, loading: tasksLoading } = useTasks();
   const { settings, loading: settingsLoading, updateSettings } = useSettings();
-  const { calendars } = useCalendars();
+  const { calendars, refetch: refetchCalendars } = useCalendars();
   const {
     events,
     refetch: refetchEvents,
@@ -368,6 +368,7 @@ export default function DayPage() {
               settings={settings}
               calendars={calendars}
               onSave={updateSettings}
+              onRefetchCalendars={refetchCalendars}
             />
 
             <DropdownMenu>
@@ -439,6 +440,7 @@ export default function DayPage() {
                     calendars={calendars}
                     onSave={updateSettings}
                     showLabel={true}
+                    onRefetchCalendars={refetchCalendars}
                   />
 
                   <Button

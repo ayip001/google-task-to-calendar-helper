@@ -91,23 +91,23 @@ export function useCalendars() {
   const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchCalendars() {
-      try {
-        const res = await fetch('/api/calendar?type=calendars');
-        if (res.ok) {
-          const data = await res.json();
-          setCalendars(data);
-        }
-      } finally {
-        setLoading(false);
+  const fetchCalendars = useCallback(async () => {
+    try {
+      const res = await fetch('/api/calendar?type=calendars');
+      if (res.ok) {
+        const data = await res.json();
+        setCalendars(data);
       }
+    } finally {
+      setLoading(false);
     }
-
-    fetchCalendars();
   }, []);
 
-  return { calendars, loading };
+  useEffect(() => {
+    fetchCalendars();
+  }, [fetchCalendars]);
+
+  return { calendars, loading, refetch: fetchCalendars };
 }
 
 export function useSettings() {
