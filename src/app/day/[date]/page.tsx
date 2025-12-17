@@ -512,10 +512,10 @@ export default function DayPage() {
         </div>
       </main>
 
-      {/* Mobile: Tab content */}
-      <main className="flex-1 md:hidden overflow-hidden flex flex-col">
+      {/* Mobile: Tab content - same layout as desktop */}
+      <main className="flex-1 md:hidden flex overflow-hidden">
         {mobileView === 'calendar' ? (
-          <div className="flex-1 p-4 overflow-hidden min-h-0">
+          <div className="flex-1 p-4 overflow-hidden">
             <DayCalendar
               date={dateParam}
               events={events}
