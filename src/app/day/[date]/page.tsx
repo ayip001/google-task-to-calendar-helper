@@ -528,16 +528,18 @@ export default function DayPage() {
             />
           </div>
         ) : (
-          <TaskPanel
-            taskLists={taskLists}
-            placements={placements}
-            loading={tasksLoading}
-            filter={filter}
-            onFilterChange={setFilter}
-            filteredTasks={filteredTasks}
-            onAddTask={handleAddTask}
-            isMobile={true}
-          />
+          <div className="flex-1 overflow-hidden">
+            <TaskPanel
+              taskLists={taskLists}
+              placements={placements}
+              loading={tasksLoading}
+              filter={filter}
+              onFilterChange={setFilter}
+              filteredTasks={filteredTasks}
+              onAddTask={handleAddTask}
+              isMobile={true}
+            />
+          </div>
         )}
       </main>
 
