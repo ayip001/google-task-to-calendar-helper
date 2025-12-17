@@ -404,7 +404,7 @@ export default function DayPage() {
                 <SheetHeader>
                   <SheetTitle>Menu</SheetTitle>
                 </SheetHeader>
-                <div className="flex flex-col gap-2 mt-4">
+                <div className="flex flex-col gap-2 mt-4 px-4">
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -412,7 +412,7 @@ export default function DayPage() {
                       setMobileMenuOpen(false);
                     }}
                     disabled={autoFitLoading || filteredTasks.length === 0}
-                    className="justify-start"
+                    className="justify-start w-full"
                   >
                     <Wand2 className="h-4 w-4 mr-2" />
                     Auto-fit all tasks
@@ -425,19 +425,20 @@ export default function DayPage() {
                         clearPlacements();
                         setMobileMenuOpen(false);
                       }}
-                      className="justify-start text-destructive hover:text-destructive"
+                      className="justify-start w-full text-destructive hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Clear placements
                     </Button>
                   )}
 
-                  <div className="border-t my-2" />
+                  <div className="border-t my-2 -mx-4" />
 
                   <SettingsPanel
                     settings={settings}
                     calendars={calendars}
                     onSave={updateSettings}
+                    showLabel={true}
                   />
 
                   <Button
@@ -446,7 +447,7 @@ export default function DayPage() {
                       signOut();
                       setMobileMenuOpen(false);
                     }}
-                    className="justify-start"
+                    className="justify-start w-full"
                   >
                     <LogOut className="h-4 w-4 mr-2" />
                     Sign out
@@ -512,9 +513,9 @@ export default function DayPage() {
       </main>
 
       {/* Mobile: Tab content */}
-      <main className="flex-1 md:hidden overflow-hidden">
+      <main className="flex-1 md:hidden overflow-hidden flex flex-col">
         {mobileView === 'calendar' ? (
-          <div className="h-full p-4 overflow-hidden">
+          <div className="flex-1 p-4 overflow-hidden min-h-0">
             <DayCalendar
               date={dateParam}
               events={events}

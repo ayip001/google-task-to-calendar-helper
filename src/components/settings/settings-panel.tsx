@@ -27,6 +27,7 @@ interface SettingsPanelProps {
   settings: UserSettings;
   calendars: GoogleCalendar[];
   onSave: (updates: Partial<UserSettings>) => Promise<void>;
+  showLabel?: boolean;
 }
 
 // Convert HH:MM to minutes since midnight
@@ -46,7 +47,7 @@ function formatTime(time: string, format: '12h' | '24h'): string {
   return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
 }
 
-export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProps) {
+export function SettingsPanel({ settings, calendars, onSave, showLabel = false }: SettingsPanelProps) {
   const [localSettings, setLocalSettings] = useState<UserSettings>(settings);
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(false);
@@ -205,8 +206,9 @@ export function SettingsPanel({ settings, calendars, onSave }: SettingsPanelProp
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline" size="icon">
+        <Button variant={showLabel ? "ghost" : "outline"} size={showLabel ? "default" : "icon"} className={showLabel ? "justify-start w-full" : ""}>
           <Settings className="h-4 w-4" />
+          {showLabel && <span className="ml-2">Settings</span>}
         </Button>
       </SheetTrigger>
       <SheetContent className="overflow-y-auto">
