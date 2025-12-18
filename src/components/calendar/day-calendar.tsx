@@ -306,10 +306,57 @@ export function DayCalendar({
     );
   };
 
-  // Check if a time is in the past
-  const isTimeInPast = (time: Date): boolean => {
-    return time < new Date();
-  };
+  // Convert FullCalendar's pseudo-UTC Date to actual UTC ISO string
+  // When FullCalendar has a named timezone, Date objects store wall-clock time
+  // in their UTC fields, not actual UTC. We need to convert properly.
+  const fcDateToActualUTC = useCallback((fcDate: Date): string => {
+    if (!displayTimezone) {
+      return fcDate.toISOString();
+    }
+
+    // FullCalendar stores wall-clock time in UTC fields when timezone is set
+    // Extract the wall-clock components
+    const year = fcDate.getUTCFullYear();
+    const month = fcDate.getUTCMonth();
+    const day = fcDate.getUTCDate();
+    const hours = fcDate.getUTCHours();
+    const minutes = fcDate.getUTCMinutes();
+
+    // Create a date string in the display timezone
+    // Format: YYYY-MM-DDTHH:mm:ss
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+
+    // Get the offset for this timezone at this date
+    const tempDate = new Date(dateStr + 'Z'); // Treat as UTC temporarily
+    const tzFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: displayTimezone,
+      hour: 'numeric',
+      hour12: false,
+    });
+    const utcFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      hour: 'numeric',
+      hour12: false,
+    });
+
+    const tzHour = parseInt(tzFormatter.format(tempDate), 10);
+    const utcHour = parseInt(utcFormatter.format(tempDate), 10);
+
+    // Offset in hours (TZ - UTC), i.e., what to subtract from TZ time to get UTC
+    let offsetHours = tzHour - utcHour;
+    if (offsetHours > 12) offsetHours -= 24;
+    if (offsetHours < -12) offsetHours += 24;
+
+    // Create the actual UTC date by subtracting the offset
+    const actualUtcDate = new Date(Date.UTC(year, month, day, hours - offsetHours, minutes));
+    return actualUtcDate.toISOString();
+  }, [displayTimezone]);
+
+  // Check if a time is in the past (using actual UTC)
+  const isTimeInPast = useCallback((fcDate: Date): boolean => {
+    const actualUtc = fcDateToActualUTC(fcDate);
+    return new Date(actualUtc) < new Date();
+  }, [fcDateToActualUTC]);
 
   const handleEventDrop = (info: EventDropArg) => {
     const placementId = info.event.extendedProps?.placementId;
@@ -320,7 +367,7 @@ export function DayCalendar({
         onPastTimeDrop?.();
         return;
       }
-      onPlacementDrop(placementId, info.event.start.toISOString());
+      onPlacementDrop(placementId, fcDateToActualUTC(info.event.start));
     }
   };
 
@@ -340,7 +387,7 @@ export function DayCalendar({
       // Remove the temporary event that FullCalendar created
       info.event.remove();
       // Create our own placement through the callback
-      onExternalDrop(taskId, taskTitle, info.event.start.toISOString(), taskListTitle);
+      onExternalDrop(taskId, taskTitle, fcDateToActualUTC(info.event.start), taskListTitle);
     }
   };
 
