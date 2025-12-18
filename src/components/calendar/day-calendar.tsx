@@ -82,45 +82,8 @@ export function DayCalendar({
   const selectedTimezone = settings.timezone;
   const hasDifferentTimezones = selectedTimezone && calendarTimezone && selectedTimezone !== calendarTimezone;
 
-  // Convert time from selected timezone to browser local timezone
-  // This ensures the calendar range displays correctly regardless of browser timezone
-  const convertSelectedTimeToLocal = useCallback((timeStr: string): string => {
-    if (!selectedTimezone) return timeStr;
-
-    const [hours, minutes] = timeStr.split(':').map(Number);
-
-    // Use a reference date to calculate timezone offset
-    const now = new Date();
-
-    const localFormatter = new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      hour12: false,
-    });
-    const selectedFormatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: selectedTimezone,
-      hour: 'numeric',
-      hour12: false,
-    });
-
-    const localHour = parseInt(localFormatter.format(now), 10);
-    const selectedHour = parseInt(selectedFormatter.format(now), 10);
-
-    // Offset in hours (local - selected)
-    let offsetHours = localHour - selectedHour;
-
-    // Handle day boundary (normalize to -12 to +12 range)
-    if (offsetHours > 12) offsetHours -= 24;
-    if (offsetHours < -12) offsetHours += 24;
-
-    // Apply offset
-    let newHours = hours + offsetHours;
-
-    // Handle wraparound
-    if (newHours < 0) newHours += 24;
-    if (newHours >= 24) newHours -= 24;
-
-    return `${newHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  }, [selectedTimezone]);
+  // The timezone to use for FullCalendar - selected timezone takes priority, then calendar timezone
+  const displayTimezone = selectedTimezone || calendarTimezone;
 
   useEffect(() => {
     if (calendarRef.current) {
@@ -143,22 +106,36 @@ export function DayCalendar({
   useEffect(() => {
     const checkNowPosition = () => {
       const now = new Date();
-      const [year, month, day] = date.split('-').map(Number);
-      const viewDate = new Date(year, month - 1, day);
 
-      // Only show boundary indicator if viewing today
-      if (
-        now.getFullYear() !== viewDate.getFullYear() ||
-        now.getMonth() !== viewDate.getMonth() ||
-        now.getDate() !== viewDate.getDate()
-      ) {
+      // Get current time in the display timezone
+      const tzToUse = displayTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const nowInTz = new Intl.DateTimeFormat('en-US', {
+        timeZone: tzToUse,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(now);
+
+      const tzYear = parseInt(nowInTz.find(p => p.type === 'year')?.value || '0', 10);
+      const tzMonth = parseInt(nowInTz.find(p => p.type === 'month')?.value || '0', 10);
+      const tzDay = parseInt(nowInTz.find(p => p.type === 'day')?.value || '0', 10);
+      const tzHour = parseInt(nowInTz.find(p => p.type === 'hour')?.value || '0', 10);
+      const tzMinute = parseInt(nowInTz.find(p => p.type === 'minute')?.value || '0', 10);
+
+      const [year, month, day] = date.split('-').map(Number);
+
+      // Only show boundary indicator if viewing today (in the display timezone)
+      if (tzYear !== year || tzMonth !== month || tzDay !== day) {
         setNowIndicatorPosition(null);
         return;
       }
 
       const [minHour, minMin] = settings.slotMinTime.split(':').map(Number);
       const [maxHour, maxMin] = settings.slotMaxTime.split(':').map(Number);
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const currentMinutes = tzHour * 60 + tzMinute;
       const minMinutes = minHour * 60 + minMin;
       const maxMinutes = maxHour * 60 + maxMin;
 
@@ -174,7 +151,7 @@ export function DayCalendar({
     checkNowPosition();
     const interval = setInterval(checkNowPosition, 60000); // Check every minute
     return () => clearInterval(interval);
-  }, [date, settings.slotMinTime, settings.slotMaxTime]);
+  }, [date, settings.slotMinTime, settings.slotMaxTime, displayTimezone]);
 
   // Inject boundary indicator into FullCalendar's scroll container
   useEffect(() => {
@@ -327,9 +304,8 @@ export function DayCalendar({
   }));
 
   // Use fallback values if settings are missing (e.g., from old saved settings)
-  // Convert from selected timezone to browser local time for correct display
-  const slotMinTime = convertSelectedTimeToLocal(settings.slotMinTime || '06:00');
-  const slotMaxTime = convertSelectedTimeToLocal(settings.slotMaxTime || '22:00');
+  const slotMinTime = settings.slotMinTime || '06:00';
+  const slotMaxTime = settings.slotMaxTime || '22:00';
 
   // Custom slot label content for dual timezone display
   const renderSlotLabel = useCallback((arg: SlotLabelContentArg) => {
@@ -375,6 +351,7 @@ export function DayCalendar({
           plugins={[timeGridPlugin, interactionPlugin]}
           initialView="timeGridDay"
           initialDate={date}
+          timeZone={displayTimezone || 'local'}
           headerToolbar={false}
           allDaySlot={false}
           slotDuration={`00:${TIME_SLOT_INTERVAL}:00`}
