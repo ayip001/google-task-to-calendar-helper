@@ -89,14 +89,14 @@ export function DayCalendar({
   const selectedTimezone = settings.timezone;
   const hasDifferentTimezones = selectedTimezone && calendarTimezone && selectedTimezone !== calendarTimezone;
 
-  // Generate column heading
-  const columnHeading = useMemo(() => {
+  // Generate column heading text
+  const columnHeadingData = useMemo(() => {
     if (!hasDifferentTimezones) {
-      return 'Time';
+      return { single: true, text: 'Time' };
     }
     const yourCity = getCityFromTimezone(selectedTimezone!);
     const calCity = getCityFromTimezone(calendarTimezone!);
-    return `${yourCity} / ${calCity}`;
+    return { single: false, yourCity, calCity };
   }, [hasDifferentTimezones, selectedTimezone, calendarTimezone]);
 
   useEffect(() => {
@@ -105,6 +105,32 @@ export function DayCalendar({
       calendarApi.gotoDate(date);
     }
   }, [date]);
+
+  // Inject column heading into FullCalendar's time axis header
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // Find the time axis header cell (top-left corner of the calendar)
+    const axisHeader = containerRef.current.querySelector('.fc-timegrid-axis');
+    if (!axisHeader) return;
+
+    // Clear existing content and add our heading
+    axisHeader.innerHTML = '';
+
+    const headingDiv = document.createElement('div');
+    headingDiv.className = 'flex flex-col text-[10px] leading-tight p-1';
+
+    if (columnHeadingData.single) {
+      headingDiv.innerHTML = `<span class="font-medium">${columnHeadingData.text}</span>`;
+    } else {
+      headingDiv.innerHTML = `
+        <span class="font-medium">${columnHeadingData.yourCity}</span>
+        <span class="text-muted-foreground">${columnHeadingData.calCity}</span>
+      `;
+    }
+
+    axisHeader.appendChild(headingDiv);
+  }, [columnHeadingData]);
 
   // Set CSS variable on document root for drag ghost color
   useEffect(() => {
@@ -326,7 +352,7 @@ export function DayCalendar({
     const calTz = formatTimeInTimezone(slotDate, calendarTimezone, selectedTimezone, settings.timeFormat);
 
     const calDayIndicator = calTz.dayOffset !== 0
-      ? <span className="text-[9px] text-muted-foreground ml-0.5">{calTz.dayOffset > 0 ? '+1' : '-1'}</span>
+      ? <span className="text-[9px] text-muted-foreground ml-0.5">{calTz.dayOffset > 0 ? '-1' : '+1'}</span>
       : null;
 
     return (
@@ -343,15 +369,10 @@ export function DayCalendar({
   return (
     <div
       ref={containerRef}
-      className="h-full day-calendar-container flex flex-col"
+      className="h-full day-calendar-container"
       style={{ '--task-color': settings.taskColor } as React.CSSProperties}
     >
-      {/* Timezone column heading */}
-      <div className="flex-shrink-0 text-[10px] text-muted-foreground px-1 py-0.5 border-b bg-muted/20">
-        {columnHeading}
-      </div>
-      <div className="flex-1 overflow-hidden">
-        <FullCalendar
+      <FullCalendar
           ref={calendarRef}
           plugins={[timeGridPlugin, interactionPlugin]}
           initialView="timeGridDay"
@@ -377,7 +398,6 @@ export function DayCalendar({
           slotLaneClassNames="fc-slot-lane"
           slotLabelContent={renderSlotLabel}
         />
-      </div>
     </div>
   );
 }
