@@ -560,6 +560,8 @@ export default function DayPage() {
         onConfirm={handleSaveToCalendar}
         saving={saving}
         taskColor={settings.taskColor}
+        calendarTimezone={selectedCalendarTimezone}
+        timeFormat={settings.timeFormat}
       />
     </div>
   );

@@ -375,8 +375,9 @@ export function DayCalendar({
     const selTz = formatTimeInTimezone(slotDate, selectedTimezone, selectedTimezone, settings.timeFormat);
     const calTz = formatTimeInTimezone(slotDate, calendarTimezone, selectedTimezone, settings.timeFormat);
 
+    // Show actual day offset (handles extreme timezone differences like +2 or -2)
     const calDayIndicator = calTz.dayOffset !== 0
-      ? <span className="text-[9px] text-muted-foreground ml-0.5">{calTz.dayOffset > 0 ? '+1' : '-1'}</span>
+      ? <span className="text-[9px] text-muted-foreground ml-0.5">{calTz.dayOffset > 0 ? `+${calTz.dayOffset}` : calTz.dayOffset}</span>
       : null;
 
     return (
