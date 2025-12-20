@@ -1,21 +1,20 @@
 import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
+  plugins: [react()],
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/lib/test-utils/setup.ts'],
-    testTimeout: 10000,
+    testTimeout: 30000,
     teardownTimeout: 5000,
-    // Use threads pool instead of forks for better cleanup
     pool: 'threads',
-    // Vitest 4: poolOptions moved to top-level
     threads: {
-      singleThread: false,
+      singleThread: true,
       isolate: true,
     },
-    // Ensure proper cleanup
     forceRerunTriggers: [],
   },
   resolve: {

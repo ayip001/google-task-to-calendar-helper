@@ -13,7 +13,7 @@ export default function TestAuthPage() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    // Check if session is already saved
+    // Check if session is already saved (but always allow re-saving to refresh token)
     if (typeof window !== 'undefined') {
       const savedSession = localStorage.getItem('test-session');
       if (savedSession) {
@@ -21,13 +21,19 @@ export default function TestAuthPage() {
           const parsed = JSON.parse(savedSession);
           if (parsed.accessToken && parsed.expiresAt && parsed.expiresAt > Date.now()) {
             setSaved(true);
+          } else {
+            // Token expired, allow re-saving
+            setSaved(false);
           }
         } catch {
-          // Invalid saved session
+          // Invalid saved session, allow re-saving
+          setSaved(false);
         }
+      } else {
+        setSaved(false);
       }
     }
-  }, []);
+  }, [session]);
 
   const handleSaveSession = async () => {
     if (!session?.accessToken) {
@@ -137,9 +143,10 @@ export default function TestAuthPage() {
 
           <Button
             onClick={handleSaveSession}
-            disabled={!session?.accessToken || saving || saved}
+            disabled={!session?.accessToken || saving}
             className="w-full"
             size="lg"
+            variant={saved ? "outline" : "default"}
           >
             {saving ? (
               <>
@@ -148,8 +155,8 @@ export default function TestAuthPage() {
               </>
             ) : saved ? (
               <>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Session Saved
+                <Save className="mr-2 h-4 w-4" />
+                Re-save Session (Refresh Token)
               </>
             ) : (
               <>

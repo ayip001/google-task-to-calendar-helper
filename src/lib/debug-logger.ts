@@ -1,6 +1,34 @@
 import { WorkingHours, TaskPlacement, UserSettings } from '@/types';
 
-const DEBUG_ENABLED = process.env.NEXT_PUBLIC_DEBUG === 'true';
+// Check isDebugEnabled() at runtime instead of module load time
+// This allows tests to enable debugging even after the module loads
+function isDebugEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_DEBUG === 'true';
+}
+
+// Deduplication cache to prevent duplicate logs from React strict mode double rendering
+const logDeduplicationCache = new Map<string, number>();
+const DEDUP_WINDOW_MS = 2000; // Skip duplicate logs within 200ms
+
+function shouldLog(key: string): boolean {
+  const now = Date.now();
+  const lastLogTime = logDeduplicationCache.get(key);
+  
+  if (lastLogTime === undefined || now - lastLogTime > DEDUP_WINDOW_MS) {
+    logDeduplicationCache.set(key, now);
+    // Clean up old entries periodically (keep cache size reasonable)
+    if (logDeduplicationCache.size > 100) {
+      const cutoff = now - DEDUP_WINDOW_MS * 10;
+      for (const [k, v] of logDeduplicationCache.entries()) {
+        if (v < cutoff) {
+          logDeduplicationCache.delete(k);
+        }
+      }
+    }
+    return true;
+  }
+  return false;
+}
 
 export interface TimezoneContext {
   browser: string;
@@ -351,7 +379,11 @@ export function logDayOpen(
   userTimezone?: string,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
+
+  // Deduplicate: create a key from the log parameters
+  const logKey = `dayOpen:${date}:${calendarTimezone || ''}:${userTimezone || ''}`;
+  if (!shouldLog(logKey)) return;
 
   const data = extractDayOpenData(date, calendarTimezone, userTimezone);
 
@@ -659,7 +691,12 @@ export function logCalendarLoad(
   }>,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
+
+  // Deduplicate: create a key from the log parameters
+  const dateStr = firstSlot.toISOString().split('T')[0];
+  const logKey = `calendarLoad:${dateStr}:${expectedRange.start}:${expectedRange.end}:${timezones.userSelected}:${timezones.calendar}:${renderedTimeRange.firstRenderedLabel}:${renderedTimeRange.lastRenderedLabel}`;
+  if (!shouldLog(logKey)) return;
 
   const data = extractCalendarLoadData(
     expectedRange,
@@ -746,7 +783,7 @@ export function logApiCall(
   timezones: TimezoneContext,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
 
   const data = extractApiCallData(endpoint, request, response, timezones);
 
@@ -801,7 +838,7 @@ export function logTaskPlacement(
   listTitle?: string,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
 
   const data = extractTaskPlacementData(
     taskId,
@@ -861,7 +898,7 @@ export function logTaskDrag(
   timezones: TimezoneContext,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
 
   const data = extractTaskDragData(
     taskTitle,
@@ -902,7 +939,7 @@ export function logTaskResize(
   timezones: TimezoneContext,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
 
   const data = extractTaskResizeData(taskTitle, oldDuration, newDuration, timezones);
 
@@ -940,7 +977,7 @@ export function logSave(
   timezones: TimezoneContext,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
 
   const data = extractSaveData(placements, displayedTimes, timezones);
 
@@ -977,7 +1014,7 @@ export function logFullCalendarSlotLabel(
   timezones: TimezoneContext,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
 
   const data = extractSlotLabelData(slotTime, labelText, timezones);
 
@@ -1052,7 +1089,7 @@ export function logAutoFitPlacement(
   listTitle?: string,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
 
   const data = extractAutoFitPlacementData(
     taskId,
@@ -1081,7 +1118,7 @@ export function logAutoFit(
   businessHours: WorkingHours[],
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
 
   const data = extractAutoFitData(
     date,
@@ -1204,7 +1241,7 @@ export function logSettingsSave(
   newSettings: UserSettings,
   writer: LoggerWriter = new ConsoleLogger()
 ): void {
-  if (!DEBUG_ENABLED) return;
+  if (!isDebugEnabled()) return;
 
   const data = extractSettingsSaveData(previousSettings, newSettings);
 

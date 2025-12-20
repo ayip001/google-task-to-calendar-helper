@@ -52,6 +52,13 @@ export async function POST(request: Request) {
   const session = await getAuthSession(request);
 
   if (!session?.accessToken) {
+    // Check if we're in test mode and provide helpful error
+    const testToken = request.headers.get('x-test-access-token');
+    if (testToken) {
+      return NextResponse.json({ 
+        error: 'Unauthorized: Test token provided but session not created. Check test session helper.' 
+      }, { status: 401 });
+    }
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -69,15 +76,31 @@ export async function POST(request: Request) {
 
     const result = await createCalendarEvents(session.accessToken, calendarId, placements, taskColor);
 
+    // If there are errors, include them in the response
+    if (result.errors.length > 0) {
+      return NextResponse.json({
+        success: false,
+        savedCount: result.success.length,
+        events: result.success,
+        errors: result.errors,
+      }, { status: 500 });
+    }
+
     return NextResponse.json({
       success: true,
       savedCount: result.success.length,
       events: result.success,
       errors: result.errors,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating calendar events:', error);
-    return NextResponse.json({ error: 'Failed to create calendar events' }, { status: 500 });
+    // Include more details in the error response for debugging
+    const errorMessage = error?.message || 'Failed to create calendar events';
+    const errorDetails = error?.response?.data || error?.errors || null;
+    return NextResponse.json({ 
+      error: errorMessage,
+      details: errorDetails,
+    }, { status: 500 });
   }
 }
 

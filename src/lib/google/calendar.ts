@@ -228,8 +228,9 @@ export async function createCalendarEvents(
     try {
       const event = await createCalendarEvent(accessToken, calendarId, placement, taskColor);
       results.push(event);
-    } catch (error) {
-      errors.push(`Failed to create event for "${placement.taskTitle}": ${error}`);
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      errors.push(`Failed to create event for "${placement.taskTitle}": ${errorMessage}`);
     }
   }
 
@@ -245,6 +246,36 @@ export async function deleteCalendarEvent(
   await calendar.events.delete({
     calendarId,
     eventId,
+  });
+}
+
+export async function createCalendar(
+  accessToken: string,
+  summary: string,
+  timeZone: string
+): Promise<GoogleCalendar> {
+  const calendar = createCalendarClient(accessToken);
+  const response = await calendar.calendars.insert({
+    requestBody: {
+      summary,
+      timeZone,
+    },
+  });
+
+  return {
+    id: response.data.id!,
+    summary: response.data.summary!,
+    timeZone: response.data.timeZone,
+  };
+}
+
+export async function deleteCalendar(
+  accessToken: string,
+  calendarId: string
+): Promise<void> {
+  const calendar = createCalendarClient(accessToken);
+  await calendar.calendars.delete({
+    calendarId,
   });
 }
 

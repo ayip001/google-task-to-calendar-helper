@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-helper';
 import { autoFitTasks } from '@/lib/autofit';
 import { getEventsForDay } from '@/lib/google/calendar';
 import { getPlacements, setPlacements } from '@/lib/kv';
 import { getUserSettings } from '@/lib/kv';
 import { GoogleTask } from '@/types';
+import { logAutoFit, createTimezoneContext } from '@/lib/debug-logger';
 
 // Calculate timezone offset in minutes from a timezone string
 function getTimezoneOffsetMinutes(timezone: string, date: string): number {
@@ -56,7 +57,7 @@ function getTimezoneOffsetMinutes(timezone: string, date: string): number {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await getAuthSession(request);
 
   if (!session?.accessToken || !session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -84,6 +85,36 @@ export async function POST(request: Request) {
 
     const allPlacements = [...existingPlacements, ...result.placements];
     await setPlacements(session.user.email, date, allPlacements);
+
+    // Log autofit call
+    const calendarTimezone = settings.calendarTimezones?.[settings.selectedCalendarId];
+    const userTimezone = timezone || settings.timezone;
+    const timezones = createTimezoneContext(calendarTimezone, userTimezone);
+    const filteredTasks = settings.ignoreContainerTasks ? tasks.filter(t => !t.hasSubtasks) : tasks;
+    
+    // Log autofit - ensure DEBUG is enabled for server-side logging
+    // Force enable DEBUG for this call since we're in a test environment
+    const originalDebug = process.env.NEXT_PUBLIC_DEBUG;
+    process.env.NEXT_PUBLIC_DEBUG = 'true';
+    
+    try {
+      logAutoFit(
+        date,
+        tasks.length,
+        filteredTasks.length,
+        result.placements,
+        result.unplacedTasks.map(t => ({ id: t.id, title: t.title })),
+        timezones,
+        settings.workingHours
+      );
+    } finally {
+      // Restore original value
+      if (originalDebug !== undefined) {
+        process.env.NEXT_PUBLIC_DEBUG = originalDebug;
+      } else {
+        delete process.env.NEXT_PUBLIC_DEBUG;
+      }
+    }
 
     return NextResponse.json({
       ...result,
