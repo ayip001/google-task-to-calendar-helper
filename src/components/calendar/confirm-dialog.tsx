@@ -23,6 +23,13 @@ interface ConfirmDialogProps {
   timeFormat: '12h' | '24h';
 }
 
+// Extract city name from IANA timezone string
+function getCityFromTimezone(tz: string): string {
+  const parts = tz.split('/');
+  const city = parts[parts.length - 1];
+  return city.replace(/_/g, ' ');
+}
+
 // Format time in calendar timezone with user's preferred format
 function formatTimeInCalendarTimezone(
   isoString: string,
@@ -59,7 +66,12 @@ export function ConfirmDialog({
         <DialogHeader>
           <DialogTitle>Save to Calendar</DialogTitle>
           <DialogDescription>
-            The following {placements.length} task(s) will be added to your Google Calendar:
+            The following {placements.length} task(s) will be added to your Google Calendar
+            {calendarTimezone && (
+              <span className="block text-xs mt-1">
+                Times shown in calendar timezone ({getCityFromTimezone(calendarTimezone)})
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
