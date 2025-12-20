@@ -94,70 +94,45 @@ export function DayCalendar({
   // Calendar timezone should always exist; this is a fallback that should never be needed
   const displayTimezone = selectedTimezone || calendarTimezone;
 
-  // Convert a time string from displayTimezone to browser local time
-  // This is needed because FullCalendar interprets slotMinTime/slotMaxTime in browser local time
-  const convertToLocalTime = useCallback((timeStr: string): string => {
+  // Convert time from display timezone to UTC for FullCalendar
+  // FullCalendar interprets slotMinTime/slotMaxTime as UTC when timeZone is set
+  const convertToUTC = useCallback((timeStr: string): string => {
     if (!displayTimezone) return timeStr;
 
     const [hours, minutes] = timeStr.split(':').map(Number);
 
-    // Create a date on the viewed day at the specified time in displayTimezone
-    // We use the 'date' prop to get the correct offset for that specific day (handles DST)
-    const targetDateStr = `${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
-
-    // Get the offset for displayTimezone at this date/time
-    // by comparing how the same moment appears in UTC vs displayTimezone
-    const tempDate = new Date(targetDateStr);
-
-    // Format in both timezones to find the difference
-    const tzParts = new Intl.DateTimeFormat('en-US', {
+    // Get the offset between display timezone and UTC
+    const now = new Date();
+    const tzFormatter = new Intl.DateTimeFormat('en-US', {
       timeZone: displayTimezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
+      hour: 'numeric',
       hour12: false,
-    }).formatToParts(tempDate);
-
-    const localParts = new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
+    });
+    const utcFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      hour: 'numeric',
       hour12: false,
-    }).formatToParts(tempDate);
+    });
 
-    const getTotalMinutes = (parts: Intl.DateTimeFormatPart[]) => {
-      const h = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
-      const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
-      const d = parseInt(parts.find(p => p.type === 'day')?.value || '0', 10);
-      return d * 24 * 60 + h * 60 + m;
-    };
+    const tzHour = parseInt(tzFormatter.format(now), 10);
+    const utcHour = parseInt(utcFormatter.format(now), 10);
 
-    const tzMinutes = getTotalMinutes(tzParts);
-    const localMinutes = getTotalMinutes(localParts);
+    // Offset in hours (UTC - TZ), i.e., what to add to TZ time to get UTC
+    let offsetHours = utcHour - tzHour;
 
-    // Offset: how many minutes to add to displayTZ time to get browser local time
-    let offsetMinutes = localMinutes - tzMinutes;
+    // Normalize to -12 to +12 range
+    if (offsetHours > 12) offsetHours -= 24;
+    if (offsetHours < -12) offsetHours += 24;
 
-    // Handle day wraparound (if difference is more than 12 hours, adjust)
-    if (offsetMinutes > 12 * 60) offsetMinutes -= 24 * 60;
-    if (offsetMinutes < -12 * 60) offsetMinutes += 24 * 60;
+    // Apply offset to convert from display timezone to UTC
+    let newHours = hours + offsetHours;
 
-    // Apply offset to the input time
-    let totalMinutes = hours * 60 + minutes + offsetMinutes;
+    // Handle wraparound
+    if (newHours < 0) newHours += 24;
+    if (newHours >= 24) newHours -= 24;
 
-    // Normalize to 0-1439 range
-    while (totalMinutes < 0) totalMinutes += 24 * 60;
-    while (totalMinutes >= 24 * 60) totalMinutes -= 24 * 60;
-
-    const newHours = Math.floor(totalMinutes / 60);
-    const newMinutes = totalMinutes % 60;
-
-    return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
-  }, [displayTimezone, date]);
+    return `${newHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  }, [displayTimezone]);
 
   useEffect(() => {
     if (calendarRef.current) {
@@ -423,28 +398,27 @@ export function DayCalendar({
   };
 
   // Convert working hours to FullCalendar businessHours format
-  // FullCalendar interprets these in browser local time, so we convert from display timezone
+  // FullCalendar interprets these as UTC when timeZone is set, so we convert from display timezone
   const businessHours = settings.workingHours.map((hours) => ({
     daysOfWeek: [0, 1, 2, 3, 4, 5, 6], // All days
-    startTime: convertToLocalTime(hours.start),
-    endTime: convertToLocalTime(hours.end),
+    startTime: convertToUTC(hours.start),
+    endTime: convertToUTC(hours.end),
   }));
 
   // Use fallback values if settings are missing (e.g., from old saved settings)
-  // FullCalendar interprets these in browser local time, so we convert from display timezone
-  const slotMinTime = convertToLocalTime(settings.slotMinTime || '06:00');
-  const slotMaxTime = convertToLocalTime(settings.slotMaxTime || '22:00');
+  // FullCalendar interprets these as UTC when timeZone is set, so we convert from display timezone
+  const slotMinTime = convertToUTC(settings.slotMinTime || '06:00');
+  const slotMaxTime = convertToUTC(settings.slotMaxTime || '22:00');
 
   // Custom slot label content for dual timezone display
   const renderSlotLabel = useCallback((arg: SlotLabelContentArg) => {
     const slotDate = arg.date;
 
     if (!hasDifferentTimezones || !selectedTimezone || !calendarTimezone) {
-      // Single timezone - format in display timezone (not browser timezone)
-      const tzToUse = displayTimezone || calendarTimezone || 'UTC';
+      // Single timezone - just use default formatting
       const timeStr = settings.timeFormat === '12h'
-        ? slotDate.toLocaleTimeString('en-US', { timeZone: tzToUse, hour: 'numeric', minute: '2-digit', hour12: true })
-        : slotDate.toLocaleTimeString('en-US', { timeZone: tzToUse, hour: '2-digit', minute: '2-digit', hour12: false });
+        ? slotDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+        : slotDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
       return <span className="text-xs">{timeStr}</span>;
     }
 
@@ -468,7 +442,7 @@ export function DayCalendar({
         </span>
       </div>
     );
-  }, [hasDifferentTimezones, calendarTimezone, selectedTimezone, displayTimezone, settings.timeFormat]);
+  }, [hasDifferentTimezones, calendarTimezone, selectedTimezone, settings.timeFormat]);
 
   return (
     <div
