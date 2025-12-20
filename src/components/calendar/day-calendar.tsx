@@ -5,6 +5,7 @@ import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import type { EventDropArg, EventInput, EventContentArg, SlotLabelContentArg } from '@fullcalendar/core';
+import type { EventResizeDoneArg } from '@fullcalendar/interaction';
 import { GoogleCalendarEvent, TaskPlacement, WorkingHours } from '@/types';
 import { TIME_SLOT_INTERVAL } from '@/lib/constants';
 import { X } from 'lucide-react';
@@ -14,6 +15,7 @@ interface DayCalendarProps {
   events: GoogleCalendarEvent[];
   placements: TaskPlacement[];
   onPlacementDrop: (placementId: string, newStartTime: string) => void;
+  onPlacementResize: (placementId: string, newDuration: number) => void;
   onExternalDrop: (taskId: string, taskTitle: string, startTime: string, taskListTitle?: string) => void;
   onPlacementClick: (placementId: string) => void;
   onPastTimeDrop?: () => void;
@@ -77,6 +79,7 @@ export function DayCalendar({
   events,
   placements,
   onPlacementDrop,
+  onPlacementResize,
   onExternalDrop,
   onPlacementClick,
   onPastTimeDrop,
@@ -96,7 +99,7 @@ export function DayCalendar({
 
   // Convert time from display timezone to UTC for FullCalendar
   // FullCalendar interprets slotMinTime/slotMaxTime as UTC when timeZone is set
-  const convertToUTC = useCallback((timeStr: string): string => {
+  const convertToUTC = useCallback((timeStr: string, allowOver24 = false): string => {
     if (!displayTimezone) return timeStr;
 
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -127,9 +130,9 @@ export function DayCalendar({
     // Apply offset to convert from display timezone to UTC
     let newHours = hours + offsetHours;
 
-    // Handle wraparound
+    // Handle wraparound - but allow >24 for slotMaxTime to avoid min > max issues
     if (newHours < 0) newHours += 24;
-    if (newHours >= 24) newHours -= 24;
+    if (!allowOver24 && newHours >= 24) newHours -= 24;
 
     return `${newHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   }, [displayTimezone]);
@@ -330,6 +333,17 @@ export function DayCalendar({
     }
   };
 
+  // Handle resize of placements to change duration
+  const handleEventResize = (info: EventResizeDoneArg) => {
+    const placementId = info.event.extendedProps?.placementId;
+    if (placementId && info.event.start && info.event.end) {
+      // Calculate new duration in minutes
+      const durationMs = info.event.end.getTime() - info.event.start.getTime();
+      const durationMinutes = Math.round(durationMs / (60 * 1000));
+      onPlacementResize(placementId, durationMinutes);
+    }
+  };
+
   // Handle external drops from task panel - this fires after FullCalendar validates the drop
   const handleEventReceive = (info: { event: { start: Date | null; remove: () => void }; draggedEl: HTMLElement }) => {
     const taskId = info.draggedEl.dataset.taskId;
@@ -352,16 +366,18 @@ export function DayCalendar({
 
   // Convert working hours to FullCalendar businessHours format
   // FullCalendar interprets these as UTC when timeZone is set, so we convert from display timezone
+  // endTime uses allowOver24=true to handle negative timezone offsets
   const businessHours = settings.workingHours.map((hours) => ({
     daysOfWeek: [0, 1, 2, 3, 4, 5, 6], // All days
     startTime: convertToUTC(hours.start),
-    endTime: convertToUTC(hours.end),
+    endTime: convertToUTC(hours.end, true),
   }));
 
   // Use fallback values if settings are missing (e.g., from old saved settings)
   // FullCalendar interprets these as UTC when timeZone is set, so we convert from display timezone
+  // slotMaxTime uses allowOver24=true to handle negative timezone offsets that would push it past midnight
   const slotMinTime = convertToUTC(settings.slotMinTime || '06:00');
-  const slotMaxTime = convertToUTC(settings.slotMaxTime || '22:00');
+  const slotMaxTime = convertToUTC(settings.slotMaxTime || '22:00', true);
 
   // Custom slot label content for dual timezone display
   const renderSlotLabel = useCallback((arg: SlotLabelContentArg) => {
@@ -420,6 +436,7 @@ export function DayCalendar({
           selectable={false}
           droppable={true}
           eventDrop={handleEventDrop}
+          eventResize={handleEventResize}
           eventContent={renderEventContent}
           eventReceive={handleEventReceive}
           eventOverlap={false}

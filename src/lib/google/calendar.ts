@@ -102,12 +102,26 @@ export async function createCalendarEvent(
   accessToken: string,
   calendarId: string,
   placement: TaskPlacement,
-  taskColor: string
+  taskColor: string,
+  timezone?: string
 ): Promise<GoogleCalendarEvent> {
   const calendar = createCalendarClient(accessToken);
 
-  const startTime = new Date(placement.startTime);
-  const endTime = new Date(startTime.getTime() + placement.duration * 60 * 1000);
+  // The placement.startTime is pseudo-UTC from FullCalendar (wall-clock time in UTC fields)
+  // We need to interpret it as the display timezone, not as actual UTC
+  const startDate = new Date(placement.startTime);
+  const endDate = new Date(startDate.getTime() + placement.duration * 60 * 1000);
+
+  // Extract wall-clock components from the pseudo-UTC date
+  const formatDateTime = (date: Date): string => {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  };
 
   const response = await calendar.events.insert({
     calendarId,
@@ -115,10 +129,12 @@ export async function createCalendarEvent(
       // Append invisible marker to identify events created by this utility
       summary: placement.taskTitle + UTILITY_MARKER,
       start: {
-        dateTime: startTime.toISOString(),
+        dateTime: formatDateTime(startDate),
+        timeZone: timezone,
       },
       end: {
-        dateTime: endTime.toISOString(),
+        dateTime: formatDateTime(endDate),
+        timeZone: timezone,
       },
       colorId: getGoogleColorId(taskColor),
     },
@@ -144,14 +160,15 @@ export async function createCalendarEvents(
   accessToken: string,
   calendarId: string,
   placements: TaskPlacement[],
-  taskColor: string
+  taskColor: string,
+  timezone?: string
 ): Promise<{ success: GoogleCalendarEvent[]; errors: string[] }> {
   const results: GoogleCalendarEvent[] = [];
   const errors: string[] = [];
 
   for (const placement of placements) {
     try {
-      const event = await createCalendarEvent(accessToken, calendarId, placement, taskColor);
+      const event = await createCalendarEvent(accessToken, calendarId, placement, taskColor, timezone);
       results.push(event);
     } catch (error) {
       errors.push(`Failed to create event for "${placement.taskTitle}": ${error}`);

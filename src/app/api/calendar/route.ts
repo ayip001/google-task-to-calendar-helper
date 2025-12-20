@@ -56,17 +56,18 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { calendarId, placements, taskColor } = body as {
+    const { calendarId, placements, taskColor, timezone } = body as {
       calendarId: string;
       placements: TaskPlacement[];
       taskColor: string;
+      timezone?: string;
     };
 
     if (!calendarId || !placements || !Array.isArray(placements) || !taskColor) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    const result = await createCalendarEvents(session.accessToken, calendarId, placements, taskColor);
+    const result = await createCalendarEvents(session.accessToken, calendarId, placements, taskColor, timezone);
 
     return NextResponse.json({
       success: true,

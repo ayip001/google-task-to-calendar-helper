@@ -137,6 +137,14 @@ export default function DayPage() {
     }
   };
 
+  const handlePlacementResize = async (placementId: string, newDuration: number) => {
+    try {
+      await updatePlacement(placementId, { duration: newDuration });
+    } catch {
+      toast.error('Failed to update placement duration');
+    }
+  };
+
   const handleExternalDrop = async (taskId: string, taskTitle: string, startTime: string, listTitle?: string) => {
     try {
       const newPlacement: TaskPlacement = {
@@ -281,6 +289,9 @@ export default function DayPage() {
   const handleSaveToCalendar = async () => {
     setSaving(true);
     try {
+      // Use selected timezone if set, otherwise use calendar timezone
+      const displayTimezone = settings.timezone || selectedCalendarTimezone;
+
       const response = await fetch('/api/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -288,6 +299,7 @@ export default function DayPage() {
           calendarId: settings.selectedCalendarId,
           placements,
           taskColor: settings.taskColor,
+          timezone: displayTimezone,
         }),
       });
 
@@ -501,6 +513,7 @@ export default function DayPage() {
             events={events}
             placements={placements}
             onPlacementDrop={handlePlacementDrop}
+            onPlacementResize={handlePlacementResize}
             onExternalDrop={handleExternalDrop}
             onPlacementClick={handlePlacementClick}
             onPastTimeDrop={() => toast.error('Cannot place tasks in the past')}
@@ -530,6 +543,7 @@ export default function DayPage() {
               events={events}
               placements={placements}
               onPlacementDrop={handlePlacementDrop}
+              onPlacementResize={handlePlacementResize}
               onExternalDrop={handleExternalDrop}
               onPlacementClick={handlePlacementClick}
               onPastTimeDrop={() => toast.error('Cannot place tasks in the past')}
