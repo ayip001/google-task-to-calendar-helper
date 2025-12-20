@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-helper';
 import { getUserSettings, setUserSettings } from '@/lib/kv';
 import { UserSettings } from '@/types';
 
-export async function GET() {
-  const session = await auth();
+export async function GET(request: Request) {
+  const session = await getAuthSession(request);
 
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,7 +20,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const session = await auth();
+  const session = await getAuthSession();
 
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

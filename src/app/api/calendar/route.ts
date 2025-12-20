@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { getCalendars, getEventsForDay, getEventsForMonth, createCalendarEvents } from '@/lib/google/calendar';
+import { getAuthSession } from '@/lib/auth-helper';
+import { getCalendars, getEventsForDay, getEventsForMonth, createCalendarEvents, deleteCalendarEvent } from '@/lib/google/calendar';
 import { TaskPlacement } from '@/types';
 
 export async function GET(request: Request) {
-  const session = await auth();
+  const session = await getAuthSession(request);
 
   if (!session?.accessToken) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await getAuthSession(request);
 
   if (!session?.accessToken) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -78,5 +78,30 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error creating calendar events:', error);
     return NextResponse.json({ error: 'Failed to create calendar events' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  const session = await getAuthSession();
+
+  if (!session?.accessToken) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const calendarId = searchParams.get('calendarId') || 'primary';
+    const eventId = searchParams.get('eventId');
+
+    if (!eventId) {
+      return NextResponse.json({ error: 'Event ID required' }, { status: 400 });
+    }
+
+    await deleteCalendarEvent(session.accessToken, calendarId, eventId);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting calendar event:', error);
+    return NextResponse.json({ error: 'Failed to delete calendar event' }, { status: 500 });
   }
 }

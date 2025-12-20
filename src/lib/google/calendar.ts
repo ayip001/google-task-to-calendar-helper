@@ -125,6 +125,9 @@ export async function getEventsForDay(
       colorId: item.colorId ?? undefined,
     }));
 
+  const timezones = createTimezoneContext(undefined, timezone);
+  logApiCall('getEventsForDay', { date, calendarId, timezone }, { events, count: events.length }, timezones);
+
   return events;
 }
 
@@ -231,6 +234,18 @@ export async function createCalendarEvents(
   }
 
   return { success: results, errors };
+}
+
+export async function deleteCalendarEvent(
+  accessToken: string,
+  calendarId: string,
+  eventId: string
+): Promise<void> {
+  const calendar = createCalendarClient(accessToken);
+  await calendar.events.delete({
+    calendarId,
+    eventId,
+  });
 }
 
 function getGoogleColorId(hexColor: string): string {
