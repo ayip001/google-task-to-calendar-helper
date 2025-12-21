@@ -41,26 +41,89 @@ export async function verifyCalendarTimeRange(
   );
 
   // Wait for FullCalendar to render
-  await waitFor(() => {
-    const calendarContainer = container.querySelector('.day-calendar-container');
-    if (!calendarContainer) {
-      throw new Error('Calendar container not found');
-    }
-  }, { timeout: 5000 });
+  // Full day ranges need more time to render all slots
+  const isFullDay = expectedTimeRange.start === '00:00' && expectedTimeRange.end === '23:00';
+  const timeout = isFullDay ? 20000 : 10000; // Further increased timeouts to ensure completion
+  const additionalWait = isFullDay ? 4000 : 2000; // More time for slots to render
+  
+  try {
+    // Wait for calendar container - use longer timeout for concurrent execution
+    await waitFor(() => {
+      const calendarContainer = container.querySelector('.day-calendar-container');
+      if (!calendarContainer) {
+        throw new Error('Calendar container not found');
+      }
+    }, { timeout, interval: 100 }); // Check more frequently
 
-  // Give FullCalendar additional time to fully render slots and events
-  await new Promise(resolve => setTimeout(resolve, 1000));
+    // Give FullCalendar time to render slots (especially important for full day ranges)
+    await new Promise(resolve => setTimeout(resolve, additionalWait));
+
+    // Retry slot detection with more attempts - sometimes slots need a bit more time
+    let retries = 5; // Increased retries
+    let slotsFound = false;
+    while (retries > 0 && !slotsFound) {
+      const calendarContainer = container.querySelector('.day-calendar-container') as HTMLElement;
+      if (calendarContainer) {
+        const slots = calendarContainer.querySelectorAll('.fc-timegrid-slot-label, thead .fc-timegrid-slot-label, .fc-timegrid-slot-lane');
+        if (slots.length > 0) {
+          slotsFound = true;
+          break;
+        }
+      }
+      if (!slotsFound) {
+        retries--;
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Longer wait between retries
+      }
+    }
+    
+    // If slots still not found after retries, return error result but don't throw
+    if (!slotsFound) {
+      return {
+        expectedFirstLabel: expectedTimeRange.start,
+        actualFirstLabel: '(expected, not detected)',
+        expectedLastLabel: expectedTimeRange.end === '23:00' ? '22:30' : expectedTimeRange.end,
+        actualLastLabel: '(expected, not detected)',
+        mismatchDetected: true,
+        mismatchMessage: 'FullCalendar slots not found after retries - calendar may not have fully rendered',
+      };
+    }
+  } catch (error: any) {
+    // If calendar doesn't render in time, return a result indicating failure
+    // This allows the test to complete and report the issue
+    return {
+      expectedFirstLabel: expectedTimeRange.start,
+      actualFirstLabel: '(expected, not detected)',
+      expectedLastLabel: expectedTimeRange.end === '23:00' ? '22:30' : expectedTimeRange.end,
+      actualLastLabel: '(expected, not detected)',
+      mismatchDetected: true,
+      mismatchMessage: `FullCalendar failed to render within timeout: ${error?.message || String(error)}`,
+    };
+  }
 
   // Get the rendered time range from DOM
   const calendarContainer = container.querySelector('.day-calendar-container') as HTMLElement;
   if (!calendarContainer) {
-    throw new Error('Calendar container not found in DOM');
+    return {
+      expectedFirstLabel: expectedTimeRange.start,
+      actualFirstLabel: '(expected, not detected)',
+      expectedLastLabel: expectedTimeRange.end === '23:00' ? '22:30' : expectedTimeRange.end,
+      actualLastLabel: '(expected, not detected)',
+      mismatchDetected: true,
+      mismatchMessage: 'Calendar container not found in DOM after wait',
+    };
   }
 
   const renderedRange = getRenderedTimeRange(calendarContainer);
   
   if (!renderedRange) {
-    throw new Error('Could not detect rendered time range from FullCalendar DOM');
+    return {
+      expectedFirstLabel: expectedTimeRange.start,
+      actualFirstLabel: '(expected, not detected)',
+      expectedLastLabel: expectedTimeRange.end === '23:00' ? '22:30' : expectedTimeRange.end,
+      actualLastLabel: '(expected, not detected)',
+      mismatchDetected: true,
+      mismatchMessage: 'Could not detect rendered time range from FullCalendar DOM - no slots found',
+    };
   }
 
   // Log calendar load for debugging

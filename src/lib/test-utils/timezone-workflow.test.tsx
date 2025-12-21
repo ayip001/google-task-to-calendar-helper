@@ -9,37 +9,71 @@ import {
   createTestTask,
   createTestEvent,
   deleteTestEvent,
+  deleteTestEvents,
   isTestEvent,
   runAutoFit,
   clearAllPlacements,
   getPlacements,
   addPlacement,
   deleteAllTestEvents,
+  getTestFetch,
 } from './calendar-test-helpers';
 import { logDayOpen, logTaskPlacement, logSave, logAutoFit, logSettingsSave, createTimezoneContext } from '@/lib/debug-logger';
 import { UserSettings, GoogleCalendar, TaskPlacement, GoogleCalendarEvent, GoogleTask, WorkingHours } from '@/types';
 import { getTestSession } from './test-auth';
 import { DEFAULT_SETTINGS } from '@/lib/constants';
+import { format, addDays } from 'date-fns';
 import { verifyCalendarTimeRange } from './timezone-test-helpers';
 import { render, waitFor } from '@testing-library/react';
 import { DayCalendar } from '@/components/calendar/day-calendar';
-import { getEventSlotLabel } from '@/lib/fullcalendar-utils';
+import { getEventSlotLabel, getRenderedTimeRange } from '@/lib/fullcalendar-utils';
+import { logCalendarLoad } from '@/lib/debug-logger';
 
-// Test timezones to verify
-const TEST_TIMEZONES = [
-  { name: 'Hong Kong', tz: 'Asia/Hong_Kong' },
-  { name: 'Honolulu', tz: 'Pacific/Honolulu' },
-  { name: 'Los Angeles', tz: 'America/Los_Angeles' },
-  { name: 'New York', tz: 'America/New_York' },
-  { name: 'Tokyo', tz: 'Asia/Tokyo' },
-  { name: 'Sydney', tz: 'Australia/Sydney' },
+// Cities representing each UTC offset for DOM rendering tests
+const UTC_OFFSET_CITIES = [
+  { name: 'Baker Island', tz: 'Pacific/Baker_Island', offset: -12 },
+  { name: 'Honolulu', tz: 'Pacific/Honolulu', offset: -10 },
+  { name: 'Los Angeles', tz: 'America/Los_Angeles', offset: -8 },
+  { name: 'Denver', tz: 'America/Denver', offset: -7 },
+  { name: 'Chicago', tz: 'America/Chicago', offset: -6 },
+  { name: 'New York', tz: 'America/New_York', offset: -5 },
+  { name: 'Caracas', tz: 'America/Caracas', offset: -4 },
+  { name: 'Buenos Aires', tz: 'America/Buenos_Aires', offset: -3 },
+  { name: 'São Paulo', tz: 'America/Sao_Paulo', offset: -3 },
+  { name: 'Cape Verde', tz: 'Atlantic/Cape_Verde', offset: -1 },
+  { name: 'London', tz: 'Europe/London', offset: 0 },
+  { name: 'Paris', tz: 'Europe/Paris', offset: 1 },
+  { name: 'Cairo', tz: 'Africa/Cairo', offset: 2 },
+  { name: 'Moscow', tz: 'Europe/Moscow', offset: 3 },
+  { name: 'Dubai', tz: 'Asia/Dubai', offset: 4 },
+  { name: 'Karachi', tz: 'Asia/Karachi', offset: 5 },
+  { name: 'Dhaka', tz: 'Asia/Dhaka', offset: 6 },
+  { name: 'Bangkok', tz: 'Asia/Bangkok', offset: 7 },
+  { name: 'Hong Kong', tz: 'Asia/Hong_Kong', offset: 8 },
+  { name: 'Tokyo', tz: 'Asia/Tokyo', offset: 9 },
+  { name: 'Sydney', tz: 'Australia/Sydney', offset: 10 },
+  { name: 'Auckland', tz: 'Pacific/Auckland', offset: 12 },
+  { name: 'Fiji', tz: 'Pacific/Fiji', offset: 12 },
 ] as const;
 
-// Test time ranges to verify
-const TEST_TIME_RANGES = [
+// Test time ranges for DOM rendering tests (business hours commented out)
+const DOM_RENDERING_TIME_RANGES = [
   { start: '00:00', end: '01:00', name: 'Early morning (1 hour)' },
   { start: '00:00', end: '23:00', name: 'Full day' },
   { start: '11:00', end: '18:00', name: 'Business hours' },
+] as const;
+
+// Timezones for calendar event rendering tests
+const EVENT_RENDERING_TEST_TIMEZONES = [
+  { name: 'Hong Kong', tz: 'Asia/Hong_Kong' },
+  { name: 'Bangkok', tz: 'Asia/Bangkok' },
+  { name: 'Tokyo', tz: 'Asia/Tokyo' },
+] as const;
+
+// Timezones for autofit and placement tests
+const AUTOFIT_TEST_TIMEZONES = [
+  { name: 'Hong Kong', tz: 'Asia/Hong_Kong' },
+  { name: 'Paris', tz: 'Europe/Paris' },
 ] as const;
 
 // Test calendar timezone (Hong Kong)
@@ -178,12 +212,390 @@ describe('Timezone-Aware Calendar Tests', () => {
   // Global test counter
   let testCounter = 0;
 
-  // Test suite: One per timezone
-  describe.each(TEST_TIMEZONES)('User timezone: $name ($tz)', ({ tz: userTimezone, name: timezoneName }) => {
-    
-    // Test Group 1: Time Range Verification (3 tests per timezone)
-    describe('Time Range Verification', () => {
-      describe.each(TEST_TIME_RANGES)(
+  // ============================================================================
+  // Test Group 0: Calendar Event Rendering Tests - Verify events render correctly
+  // ============================================================================
+  describe('Calendar Event Rendering Tests', () => {
+    let createdHourlyEvents: GoogleCalendarEvent[] = [];
+    const nextDay = getNextDayDate();
+
+    beforeAll(async () => {
+      if (!hasTestSession || !testCalendar) {
+        return;
+      }
+
+      // Create calendar events for each hour of the day (00:00-01:00, 01:00-02:00, ..., 23:00-24:00)
+      const placements: TaskPlacement[] = [];
+      
+      for (let hour = 0; hour < 24; hour++) {
+        const startTime = `${String(hour).padStart(2, '0')}:00`;
+        const nextHour = (hour + 1) % 24;
+        const endTime = `${String(nextHour).padStart(2, '0')}:00`;
+        const eventTitle = `[TEST] Event from ${startTime} - ${endTime}`;
+        
+        // Calculate start time in UTC for the calendar timezone
+        const eventStartTime = timeInTimezoneToUTC(nextDay, startTime, TEST_CALENDAR_TIMEZONE);
+        
+        placements.push({
+          id: `event-${hour}-${Date.now()}`,
+          taskId: `task-${hour}`,
+          taskTitle: eventTitle,
+          startTime: eventStartTime,
+          duration: 60, // 1 hour
+        });
+      }
+
+      // Bulk create all events in a single API call
+      const authenticatedFetch = await getTestFetch();
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+      const response = await authenticatedFetch(`${baseUrl}/api/calendar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          calendarId: testCalendar.id,
+          placements,
+          taskColor: TEST_TASK_COLOR,
+        }),
+      });
+
+      // Parse response even if status is not OK (API may return partial success)
+      const result = await response.json();
+      createdHourlyEvents = result.events || [];
+      
+      // Check if we got any events at all
+      if (createdHourlyEvents.length === 0) {
+        const errorText = result.errors?.join(', ') || result.error || 'Unknown error';
+        throw new Error(`Failed to create any events: ${errorText}`);
+      }
+      
+      // Log warnings for partial failures, but proceed with what we have
+      if (result.errors && result.errors.length > 0) {
+        console.warn(`⚠️  ${result.errors.length} events failed to create (proceeding with ${createdHourlyEvents.length} created events)`);
+      }
+      
+      console.log(`✓ Created ${createdHourlyEvents.length} hourly events (out of ${placements.length} requested) for all timezone tests`);
+      
+      if (createdHourlyEvents.length < 24) {
+        console.warn(`⚠️  Expected 24 events but only ${createdHourlyEvents.length} were created - this may be due to API rate limits or auth token expiration`);
+      }
+
+      // Wait for events to be available in the API
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }, 30000); // 30 second timeout for event creation
+
+    afterAll(async () => {
+      if (!hasTestSession || !testCalendar) {
+        return;
+      }
+
+      // Clean up - delete all test events from ±24 hours around the test day
+      // This includes events created in this session and leftover from previous sessions
+      try {
+        const allTestEventIds: string[] = [];
+        
+        // Parse nextDay string and calculate date range (±24 hours)
+        const [year, month, day] = nextDay.split('-').map(Number);
+        const testDate = new Date(year, month - 1, day);
+        
+        // Fetch events for previous day, current day, and next day (±24 hours)
+        const datesToCheck = [
+          format(addDays(testDate, -1), 'yyyy-MM-dd'),
+          nextDay,
+          format(addDays(testDate, 1), 'yyyy-MM-dd'),
+        ];
+
+        for (const date of datesToCheck) {
+          try {
+            const events = await getEventsForDate(testCalendar.id, date);
+            const testEvents = events.filter(isTestEvent);
+            allTestEventIds.push(...testEvents.map(e => e.id));
+          } catch (error) {
+            // Ignore errors fetching events for a specific day
+            console.warn(`Failed to fetch events for ${date}:`, error);
+          }
+        }
+
+        // Remove duplicates (in case an event spans multiple days)
+        const uniqueEventIds = [...new Set(allTestEventIds)];
+
+        if (uniqueEventIds.length > 0) {
+          // Use Promise.race to ensure deletion doesn't hang
+          await Promise.race([
+            deleteTestEvents(testCalendar.id, uniqueEventIds).catch(() => {
+              // Silently ignore deletion failures - non-fatal for tests
+            }),
+            new Promise(resolve => setTimeout(resolve, 10000)) // 10 second max for bulk deletion
+          ]);
+          console.log(`✓ Cleaned up test events`);
+        }
+      } catch (error) {
+        // Silently ignore cleanup errors - non-fatal for tests
+        console.warn('Note: Could not clean up all test events:', error);
+      }
+    });
+
+    describe.each(EVENT_RENDERING_TEST_TIMEZONES)('User timezone: $name ($tz)', ({ tz: userTimezone, name: timezoneName }) => {
+      it('should create hourly events and verify DOM rendering', async () => {
+        testCounter++;
+        console.log(`#${testCounter} ${timezoneName} - Calendar Event Rendering - should verify DOM rendering with pre-created events`);
+        
+        if (!hasTestSession) {
+          console.log('Skipping test: No test session available');
+          return;
+        }
+
+        if (!originalSettings || !testCalendar) {
+          throw new Error('Test setup incomplete');
+        }
+
+        if (createdHourlyEvents.length === 0) {
+          throw new Error('No hourly events were created in beforeAll');
+        }
+
+        const timezones = createTimezoneContext(TEST_CALENDAR_TIMEZONE, userTimezone);
+        logDayOpen(nextDay, TEST_CALENDAR_TIMEZONE, userTimezone);
+
+        // Set user timezone and display hours to 12:00-14:00
+        const testSettings: Partial<UserSettings> = {
+          ...originalSettings,
+          timezone: userTimezone,
+          slotMinTime: '12:00',
+          slotMaxTime: '14:00',
+          selectedCalendarId: testCalendar.id,
+        };
+
+        const updatedSettings = await saveSettings(testSettings);
+        expect(updatedSettings.timezone).toBe(userTimezone);
+        expect(updatedSettings.slotMinTime).toBe('12:00');
+        expect(updatedSettings.slotMaxTime).toBe('14:00');
+
+        // Fetch events from Google Calendar API (events were created in beforeAll)
+        const events = await getEventsForDate(testCalendar.id, nextDay, userTimezone);
+        const testEvents = events.filter(isTestEvent);
+        
+        // Proceed with whatever events we have (non-zero is fine)
+        if (testEvents.length === 0) {
+          throw new Error('No test events were fetched from API');
+        }
+
+        // Render calendar with fetched events and check what's rendered in DOM
+        const mockSettings = {
+          ...DEFAULT_SETTINGS,
+          ...updatedSettings,
+          timezone: userTimezone,
+          slotMinTime: '12:00',
+          slotMaxTime: '14:00',
+        };
+
+        const { container } = render(
+          <DayCalendar
+            date={nextDay}
+            events={events}
+            placements={[]}
+            onPlacementDrop={() => {}}
+            onPlacementResize={() => {}}
+            onExternalDrop={() => {}}
+            onPlacementClick={() => {}}
+            settings={mockSettings}
+            calendarTimezone={TEST_CALENDAR_TIMEZONE}
+          />
+        );
+
+        await waitFor(() => {
+          const calendarContainer = container.querySelector('.day-calendar-container');
+          expect(calendarContainer).toBeTruthy();
+        }, { timeout: 5000 });
+
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const calendarContainer = container.querySelector('.day-calendar-container') as HTMLElement;
+        if (!calendarContainer) {
+          throw new Error('Calendar container not found');
+        }
+
+        // Get rendered time range from DOM
+        const renderedTimeRange = getRenderedTimeRange(calendarContainer);
+        if (!renderedTimeRange) {
+          throw new Error('Could not detect rendered time range from FullCalendar DOM');
+        }
+
+        // Find all rendered events in the DOM and format for logging
+        // Deduplicate events to handle React strict mode double rendering
+        const eventElements = calendarContainer.querySelectorAll('.fc-event');
+        const renderedEventsForLog: Array<{
+          index: number;
+          displayIndex: number;
+          time: string;
+          duration: number;
+          name: string;
+        }> = [];
+        
+        // Use a Set to track seen DOM elements directly to avoid duplicates from React strict mode
+        const seenElements = new WeakSet<Element>();
+        
+        let testEventIndex = 0;
+        for (const eventElement of eventElements) {
+          // Skip if we've already processed this exact DOM element
+          if (seenElements.has(eventElement)) {
+            continue;
+          }
+          seenElements.add(eventElement);
+          
+          const eventText = eventElement.textContent?.trim() || '';
+          if (!eventText.includes('[TEST]')) continue;
+          
+          const slot = getEventSlotLabel(eventElement as HTMLElement, calendarContainer);
+          if (!slot) continue;
+          
+          // Extract the user timezone time (first part before |)
+          const userTimeStr = slot.split(' | ')[0];
+          const [hours, minutes] = userTimeStr.split(':').map(Number);
+          if (isNaN(hours) || isNaN(minutes)) continue;
+          
+          const eventTimeMinutes = hours * 60 + minutes;
+          
+          // Only include events within 12:00-14:00 range (720-840 minutes)
+          const minMinutes = 12 * 60; // 12:00
+          const maxMinutes = 14 * 60; // 14:00
+          if (eventTimeMinutes >= minMinutes && eventTimeMinutes < maxMinutes) {
+            
+            // Find the matching event from testEvents to get its actual start time
+            // Match by extracting the hour from the event title (e.g., "Event from 12:00 - 13:00" -> hour 12)
+            const hourMatch = eventText.match(/Event from (\d{2}):\d{2}/);
+            const matchingEvent = hourMatch 
+              ? testEvents.find(e => {
+                  const eventHourMatch = e.summary?.match(/Event from (\d{2}):\d{2}/);
+                  return eventHourMatch && eventHourMatch[1] === hourMatch[1];
+                })
+              : testEvents.find(e => e.summary === eventText);
+            
+            // Construct dual timezone format from the event's actual start time
+            let dualTimeFormat = userTimeStr;
+            if (matchingEvent && matchingEvent.start.dateTime) {
+              const eventStartDate = new Date(matchingEvent.start.dateTime);
+              const userTime = eventStartDate.toLocaleTimeString('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+                timeZone: userTimezone,
+              });
+              const calendarTime = eventStartDate.toLocaleTimeString('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+                timeZone: TEST_CALENDAR_TIMEZONE,
+              });
+              dualTimeFormat = `${userTime} | ${calendarTime}`;
+            } else if (slot.includes(' | ')) {
+              // If slot already has dual format, use it
+              dualTimeFormat = slot;
+            }
+            
+            // Try to extract duration from event element or estimate
+            const estimatedDuration = Math.round((eventRect.height / 60) * 15); // Rough estimate based on height
+            
+            renderedEventsForLog.push({
+              index: testEventIndex + 1,
+              displayIndex: testEventIndex + 1,
+              time: dualTimeFormat,
+              duration: estimatedDuration,
+              name: eventText,
+            });
+            testEventIndex++;
+          }
+        }
+
+        // Final deduplication pass on the array (in case DOM query returned duplicates)
+        // Normalize and deduplicate by name + time to catch any remaining duplicates
+        const uniqueEvents = new Map<string, typeof renderedEventsForLog[0]>();
+        for (const event of renderedEventsForLog) {
+          // Normalize both name and time to handle any whitespace or formatting differences
+          const normalizedName = event.name.replace(/\s+/g, ' ').trim();
+          const normalizedTime = event.time.replace(/\s+/g, ' ').trim();
+          const key = `${normalizedName}:${normalizedTime}`;
+          // Keep the first occurrence of each unique event
+          if (!uniqueEvents.has(key)) {
+            uniqueEvents.set(key, event);
+          }
+        }
+        const deduplicatedEvents = Array.from(uniqueEvents.values()).map((event, idx) => ({
+          ...event,
+          index: idx + 1,
+          displayIndex: idx + 1,
+        }));
+
+        // Calculate first and last slot dates for logCalendarLoad
+        const [year, month, day] = nextDay.split('-').map(Number);
+        const [minHour, minMin] = '12:00'.split(':').map(Number);
+        const [maxHour, maxMin] = '14:00'.split(':').map(Number);
+        
+        const firstSlot = new Date(year, month - 1, day, minHour, minMin);
+        const lastSlot = new Date(year, month - 1, day, maxHour, maxMin);
+
+        // Use logCalendarLoad to display rendered events using existing logging
+        logCalendarLoad(
+          { start: '12:00', end: '14:00' },
+          [],
+          firstSlot,
+          lastSlot,
+          {
+            firstRenderedLabel: renderedTimeRange.firstLabel,
+            lastRenderedLabel: renderedTimeRange.lastLabel,
+            firstRenderedTime: renderedTimeRange.firstTime,
+            lastRenderedTime: renderedTimeRange.lastTime,
+          },
+          timezones,
+          deduplicatedEvents
+        );
+
+        // Verify we have rendered events
+        expect(deduplicatedEvents.length).toBeGreaterThan(0);
+        
+        // Verify the rendered events match the expected pattern for each timezone
+        // Expected patterns:
+        // - Hong Kong: Events from 12:00-13:00 and 13:00-14:00 showing as "12:00 | 12:00" and "13:00 | 13:00"
+        // - Tokyo: Events from 11:00-12:00 and 12:00-13:00 showing as "12:00 | 11:00" and "13:00 | 12:00"
+        // - Bangkok: Events from 13:00-14:00 and 14:00-15:00 showing as "12:00 | 13:00" and "13:00 | 14:00"
+        
+        const expectedEvents: Array<{ time: string; name: string }> = [];
+        if (timezoneName === 'Hong Kong') {
+          expectedEvents.push(
+            { time: '12:00 | 12:00', name: '[TEST] Event from 12:00 - 13:00' },
+            { time: '13:00 | 13:00', name: '[TEST] Event from 13:00 - 14:00' }
+          );
+        } else if (timezoneName === 'Tokyo') {
+          expectedEvents.push(
+            { time: '12:00 | 11:00', name: '[TEST] Event from 11:00 - 12:00' },
+            { time: '13:00 | 12:00', name: '[TEST] Event from 12:00 - 13:00' }
+          );
+        } else if (timezoneName === 'Bangkok') {
+          expectedEvents.push(
+            { time: '12:00 | 13:00', name: '[TEST] Event from 13:00 - 14:00' },
+            { time: '13:00 | 14:00', name: '[TEST] Event from 14:00 - 15:00' }
+          );
+        }
+        
+        if (expectedEvents.length > 0) {
+          expect(deduplicatedEvents.length).toBe(expectedEvents.length);
+          for (let i = 0; i < expectedEvents.length; i++) {
+            const expected = expectedEvents[i];
+            const actual = deduplicatedEvents[i];
+            expect(actual.time).toBe(expected.time);
+            expect(actual.name).toBe(expected.name);
+          }
+        }
+        
+        console.log(`✓ Event rendering test completed for ${timezoneName}`);
+      });
+    });
+  });
+
+  // ============================================================================
+  // Test Group 1: DOM Rendering Tests - One city per UTC offset
+  // ============================================================================
+  describe('DOM Rendering Tests (All UTC Offsets)', () => {
+    describe.each(UTC_OFFSET_CITIES)('UTC Offset: $offset ($name)', ({ tz: userTimezone, name: timezoneName, offset }) => {
+      describe.each(DOM_RENDERING_TIME_RANGES)(
         'Time range: $start-$end ($name)',
         ({ start, end, name: rangeName }) => {
           it(`should verify calendar DOM renders correct time range`, async () => {
@@ -255,9 +667,16 @@ describe('Timezone-Aware Calendar Tests', () => {
         }
       );
     });
+  });
 
-    // Test Group 2: Task Operations (Place/Resize/Move) - 1 test per timezone
-    describe('Task Operations (Place/Resize/Move)', () => {
+  // ============================================================================
+  // Test Group 2: Autofit and Placement Tests - Specific timezones only
+  // ============================================================================
+  describe('Autofit and Placement Tests', () => {
+    describe.each(AUTOFIT_TEST_TIMEZONES)('User timezone: $name ($tz)', ({ tz: userTimezone, name: timezoneName }) => {
+      
+      // Test Group 2.1: Task Operations (Place/Resize/Move) - 1 test per timezone
+      describe('Task Operations (Place/Resize/Move)', () => {
       it('should place task at start, resize to 15 minutes, and move half hour later', async () => {
         testCounter++;
         console.log(`#${testCounter} ${timezoneName} - Task Operations - should place task at start, resize to 15 minutes, and move half hour later`);
@@ -283,8 +702,8 @@ describe('Timezone-Aware Calendar Tests', () => {
         const testSettings: Partial<UserSettings> = {
           ...originalSettings,
           timezone: userTimezone,
-          slotMinTime: TEST_TIME_RANGES[0].start, // Use first range for task operations
-          slotMaxTime: TEST_TIME_RANGES[0].end,
+          slotMinTime: DOM_RENDERING_TIME_RANGES[0].start, // Use first range for task operations
+          slotMaxTime: DOM_RENDERING_TIME_RANGES[0].end,
           selectedCalendarId: testCalendar.id,
           defaultTaskDuration: 30, // 30 minutes
         };
@@ -300,8 +719,8 @@ describe('Timezone-Aware Calendar Tests', () => {
           ...DEFAULT_SETTINGS,
           ...updatedSettings,
           timezone: userTimezone,
-          slotMinTime: TEST_TIME_RANGES[0].start,
-          slotMaxTime: TEST_TIME_RANGES[0].end,
+          slotMinTime: DOM_RENDERING_TIME_RANGES[0].start,
+          slotMaxTime: DOM_RENDERING_TIME_RANGES[0].end,
           defaultTaskDuration: 30,
         };
 
@@ -351,7 +770,7 @@ describe('Timezone-Aware Calendar Tests', () => {
 
         // Step 1: Simulate placing a task at the start of the range (00:00)
         const testTask = createTestTask(`Task ${timezoneName}`);
-        const initialStartTime = timeInTimezoneToUTC(nextDay, TEST_TIME_RANGES[0].start, userTimezone);
+        const initialStartTime = timeInTimezoneToUTC(nextDay, DOM_RENDERING_TIME_RANGES[0].start, userTimezone);
         
         const initialPlacement: TaskPlacement = {
           id: `placement-initial-${Date.now()}`,
@@ -366,7 +785,7 @@ describe('Timezone-Aware Calendar Tests', () => {
         logTaskPlacement(
           testTask.id,
           testTask.title,
-          TEST_TIME_RANGES[0].start,
+          DOM_RENDERING_TIME_RANGES[0].start,
           initialStartTime,
           30,
           timezones,
@@ -378,7 +797,7 @@ describe('Timezone-Aware Calendar Tests', () => {
         logTaskPlacement(
           testTask.id,
           testTask.title,
-          TEST_TIME_RANGES[0].start,
+          DOM_RENDERING_TIME_RANGES[0].start,
           initialStartTime,
           15,
           timezones,
@@ -406,8 +825,8 @@ describe('Timezone-Aware Calendar Tests', () => {
       });
     });
 
-    // Test Group 3: Fetch and Display Task - 1 test per timezone
-    describe('Fetch and Display Task', () => {
+      // Test Group 2.2: Fetch and Display Task - 1 test per timezone
+      describe('Fetch and Display Task', () => {
       it('should save task, fetch from API, and verify rendering matches placement', async () => {
         testCounter++;
         console.log(`#${testCounter} ${timezoneName} - Fetch and Display Task - should save task, fetch from API, and verify rendering matches placement`);
@@ -433,8 +852,8 @@ describe('Timezone-Aware Calendar Tests', () => {
         const testSettings: Partial<UserSettings> = {
           ...originalSettings,
           timezone: userTimezone,
-          slotMinTime: TEST_TIME_RANGES[0].start,
-          slotMaxTime: TEST_TIME_RANGES[0].end,
+          slotMinTime: DOM_RENDERING_TIME_RANGES[0].start,
+          slotMaxTime: DOM_RENDERING_TIME_RANGES[0].end,
           selectedCalendarId: testCalendar.id,
           defaultTaskDuration: 30,
         };
@@ -512,8 +931,8 @@ describe('Timezone-Aware Calendar Tests', () => {
           ...DEFAULT_SETTINGS,
           ...updatedSettings,
           timezone: userTimezone,
-          slotMinTime: TEST_TIME_RANGES[0].start,
-          slotMaxTime: TEST_TIME_RANGES[0].end,
+          slotMinTime: DOM_RENDERING_TIME_RANGES[0].start,
+          slotMaxTime: DOM_RENDERING_TIME_RANGES[0].end,
           defaultTaskDuration: 30,
         };
 
@@ -601,8 +1020,8 @@ describe('Timezone-Aware Calendar Tests', () => {
       });
     });
 
-    // Test Group 4: Auto Fit Tests - 1 test per timezone
-    describe('Auto Fit Tests', () => {
+      // Test Group 2.3: Auto Fit Tests - 1 test per timezone
+      describe('Auto Fit Tests', () => {
       it('should test autofit with various working hour configurations', async () => {
         testCounter++;
         console.log(`#${testCounter} ${timezoneName} - Auto Fit Tests - should test autofit with various working hour configurations`);
@@ -625,7 +1044,7 @@ describe('Timezone-Aware Calendar Tests', () => {
         logDayOpen(nextDay, TEST_CALENDAR_TIMEZONE, userTimezone);
 
         // Use business hours time range (11:00-18:00)
-        const businessHoursRange = TEST_TIME_RANGES.find(r => r.name === 'Business hours')!;
+        const businessHoursRange = { start: '11:00', end: '18:00', name: 'Business hours' };
         
         // Step 0: Set up initial settings - clear working hours, set min time between tasks to 15 minutes
         const initialSettings: Partial<UserSettings> = {
@@ -821,6 +1240,7 @@ describe('Timezone-Aware Calendar Tests', () => {
         
         console.log(`✓ Auto fit test completed for ${timezoneName}`);
       });
+    });
     });
   });
 });

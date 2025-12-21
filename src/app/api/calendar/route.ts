@@ -105,7 +105,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const session = await getAuthSession();
+  const session = await getAuthSession(request);
 
   if (!session?.accessToken) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -116,15 +116,75 @@ export async function DELETE(request: Request) {
     const calendarId = searchParams.get('calendarId') || 'primary';
     const eventId = searchParams.get('eventId');
 
-    if (!eventId) {
-      return NextResponse.json({ error: 'Event ID required' }, { status: 400 });
+    // Support bulk deletion via request body
+    let eventIds: string[] = [];
+    if (eventId) {
+      // Single deletion via query param (backward compatible)
+      eventIds = [eventId];
+    } else {
+      // Bulk deletion via request body
+      const contentType = request.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
+        try {
+          const body = await request.json();
+          eventIds = body.eventIds || [];
+        } catch {
+          // If body parsing fails, ignore
+        }
+      }
+      
+      // Fallback to query params if no body or body parsing failed
+      if (eventIds.length === 0) {
+        const eventIdsParam = searchParams.get('eventIds');
+        if (eventIdsParam) {
+          eventIds = eventIdsParam.split(',');
+        }
+      }
     }
 
-    await deleteCalendarEvent(session.accessToken, calendarId, eventId);
+    if (eventIds.length === 0) {
+      return NextResponse.json({ error: 'Event ID(s) required' }, { status: 400 });
+    }
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    // Delete all events in parallel
+    const deletePromises = eventIds.map(eventId =>
+      deleteCalendarEvent(session.accessToken, calendarId, eventId).catch((error) => ({
+        eventId,
+        error: error?.message || 'Failed to delete event',
+      }))
+    );
+
+    const results = await Promise.allSettled(deletePromises);
+    const errors: string[] = [];
+    let successCount = 0;
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        if (result.value && typeof result.value === 'object' && 'error' in result.value) {
+          errors.push(result.value.error);
+        } else {
+          successCount++;
+        }
+      } else {
+        errors.push(result.reason?.message || 'Failed to delete event');
+      }
+    }
+
+    if (errors.length > 0 && successCount === 0) {
+      return NextResponse.json({ 
+        success: false,
+        errors,
+      }, { status: 500 });
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      deletedCount: successCount,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error: any) {
     console.error('Error deleting calendar event:', error);
-    return NextResponse.json({ error: 'Failed to delete calendar event' }, { status: 500 });
+    const errorMessage = error?.message || 'Failed to delete calendar event';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

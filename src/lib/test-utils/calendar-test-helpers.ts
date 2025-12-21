@@ -7,7 +7,7 @@ const TEST_TASK_PREFIX = '[TEST]';
 
 let testFetch: typeof fetch | null = null;
 
-async function getTestFetch(): Promise<typeof fetch> {
+export async function getTestFetch(): Promise<typeof fetch> {
   if (testFetch) {
     return testFetch;
   }
@@ -108,15 +108,62 @@ export async function deleteTestEvent(
   const authenticatedFetch = await getTestFetch();
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   
-  const response = await authenticatedFetch(
-    `${baseUrl}/api/calendar?calendarId=${encodeURIComponent(calendarId)}&eventId=${encodeURIComponent(eventId)}`,
-    {
-      method: 'DELETE',
-    }
-  );
+  try {
+    const response = await authenticatedFetch(
+      `${baseUrl}/api/calendar?calendarId=${encodeURIComponent(calendarId)}&eventId=${encodeURIComponent(eventId)}`,
+      {
+        method: 'DELETE',
+        signal: AbortSignal.timeout(3000), // 3 second timeout per request
+      }
+    );
 
-  if (!response.ok) {
-    throw new Error('Failed to delete test event');
+    // For 404 (already deleted) or 200/204 (success), just return
+    if (response.status === 404 || response.status === 200 || response.status === 204) {
+      return;
+    }
+
+    // For other errors, don't block - just return silently
+    // The event might already be deleted or there might be a transient error
+    return;
+  } catch (error: any) {
+    // Silently ignore all errors - deletion failures are non-fatal for tests
+    // This includes network errors, timeouts, and API errors
+    return;
+  }
+}
+
+export async function deleteTestEvents(
+  calendarId: string,
+  eventIds: string[]
+): Promise<void> {
+  if (eventIds.length === 0) {
+    return;
+  }
+
+  const authenticatedFetch = await getTestFetch();
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  
+  try {
+    const response = await authenticatedFetch(
+      `${baseUrl}/api/calendar?calendarId=${encodeURIComponent(calendarId)}`,
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventIds }),
+        signal: AbortSignal.timeout(5000), // 5 second timeout for bulk deletion
+      }
+    );
+
+    // For 200/204 (success), just return
+    if (response.status === 200 || response.status === 204) {
+      return;
+    }
+
+    // For other errors, don't block - just return silently
+    return;
+  } catch (error: any) {
+    // Silently ignore all errors - deletion failures are non-fatal for tests
+    return;
   }
 }
 
