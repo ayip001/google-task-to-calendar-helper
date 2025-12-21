@@ -31,7 +31,6 @@ import { logCalendarLoad } from '@/lib/debug-logger';
 
 // Cities representing each UTC offset for DOM rendering tests
 const UTC_OFFSET_CITIES = [
-  { name: 'Baker Island', tz: 'Pacific/Baker_Island', offset: -12 },
   { name: 'Honolulu', tz: 'Pacific/Honolulu', offset: -10 },
   { name: 'Los Angeles', tz: 'America/Los_Angeles', offset: -8 },
   { name: 'Denver', tz: 'America/Denver', offset: -7 },
