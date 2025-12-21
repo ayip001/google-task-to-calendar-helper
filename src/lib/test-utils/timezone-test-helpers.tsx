@@ -3,7 +3,6 @@ import { DayCalendar } from '@/components/calendar/day-calendar';
 import { UserSettings, GoogleCalendarEvent } from '@/types';
 import { getRenderedTimeRange } from '@/lib/fullcalendar-utils';
 import { logCalendarLoad, createTimezoneContext } from '@/lib/debug-logger';
-import { DEFAULT_SETTINGS } from '@/lib/constants';
 
 export interface TimeRangeTestResult {
   expectedFirstLabel: string;
@@ -87,7 +86,7 @@ export async function verifyCalendarTimeRange(
         mismatchMessage: 'FullCalendar slots not found after retries - calendar may not have fully rendered',
       };
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     // If calendar doesn't render in time, return a result indicating failure
     // This allows the test to complete and report the issue
     return {
@@ -96,7 +95,7 @@ export async function verifyCalendarTimeRange(
       expectedLastLabel: expectedTimeRange.end === '23:00' ? '22:30' : expectedTimeRange.end,
       actualLastLabel: '(expected, not detected)',
       mismatchDetected: true,
-      mismatchMessage: `FullCalendar failed to render within timeout: ${error?.message || String(error)}`,
+      mismatchMessage: `FullCalendar failed to render within timeout: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 
@@ -156,7 +155,6 @@ export async function verifyCalendarTimeRange(
   
   // Calculate expected last label (FullCalendar shows 30-minute slots)
   // For range 00:00-01:00, we expect to see 00:00 and 00:30 as the last visible slot
-  const [startHour, startMin] = expectedTimeRange.start.split(':').map(Number);
   const [endHour, endMin] = expectedTimeRange.end.split(':').map(Number);
   
   // Calculate the last slot: end time minus 30 minutes (since FullCalendar shows slots every 30 min)

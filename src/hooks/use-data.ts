@@ -78,7 +78,13 @@ export function useCalendarEvents(date: string, calendarId: string = 'primary', 
       
       const timezones = createTimezoneContext(calendarTimezone, timezone);
       
-      const formattedEvents = Array.isArray(data) ? data.map((event: any) => {
+      const formattedEvents = Array.isArray(data) ? data.map((event: {
+        id?: string;
+        summary?: string;
+        start?: { dateTime?: string };
+        end?: { dateTime?: string };
+        location?: string;
+      }) => {
         const startDate = event.start?.dateTime ? new Date(event.start.dateTime) : null;
         const endDate = event.end?.dateTime ? new Date(event.end.dateTime) : null;
         

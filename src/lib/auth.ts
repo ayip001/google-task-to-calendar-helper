@@ -1,7 +1,6 @@
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import { GOOGLE_SCOPES } from './constants';
-import { getTestSessionFromRequest } from './test-utils/test-session-helper';
 
 declare module 'next-auth' {
   interface Session {

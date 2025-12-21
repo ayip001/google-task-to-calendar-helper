@@ -18,7 +18,7 @@ import {
   deleteAllTestEvents,
   getTestFetch,
 } from './calendar-test-helpers';
-import { logDayOpen, logTaskPlacement, logSave, logAutoFit, logSettingsSave, createTimezoneContext } from '@/lib/debug-logger';
+import { logDayOpen, logTaskPlacement, logSave, logSettingsSave } from '@/lib/debug-logger';
 import { UserSettings, GoogleCalendar, TaskPlacement, GoogleCalendarEvent, GoogleTask, WorkingHours } from '@/types';
 import { getTestSession } from './test-auth';
 import { DEFAULT_SETTINGS } from '@/lib/constants';
@@ -28,6 +28,10 @@ import { render, waitFor } from '@testing-library/react';
 import { DayCalendar } from '@/components/calendar/day-calendar';
 import { getEventSlotLabel, getRenderedTimeRange } from '@/lib/fullcalendar-utils';
 import { logCalendarLoad } from '@/lib/debug-logger';
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 // Cities representing each UTC offset for DOM rendering tests
 const UTC_OFFSET_CITIES = [
@@ -144,8 +148,8 @@ describe('Timezone-Aware Calendar Tests', () => {
     try {
       testCalendar = await createTestCalendar(TEST_CALENDAR_NAME, TEST_CALENDAR_TIMEZONE);
       console.log(`✓ Created test calendar: ${testCalendar.id} (${TEST_CALENDAR_TIMEZONE})`);
-    } catch (error: any) {
-      const errorMessage = error?.message || String(error);
+    } catch (error: unknown) {
+      const errorMessage = getErrorMessage(error);
       if (errorMessage.includes('fetch failed') || errorMessage.includes('ECONNREFUSED')) {
         throw new Error(
           'Cannot connect to server. Please ensure the Next.js dev server is running on http://localhost:3000'
@@ -352,7 +356,6 @@ describe('Timezone-Aware Calendar Tests', () => {
           throw new Error('No hourly events were created in beforeAll');
         }
 
-        const timezones = createTimezoneContext(TEST_CALENDAR_TIMEZONE, userTimezone);
         logDayOpen(nextDay, TEST_CALENDAR_TIMEZONE, userTimezone);
 
         // Set user timezone and display hours to 12:00-14:00
@@ -594,7 +597,7 @@ describe('Timezone-Aware Calendar Tests', () => {
   // Test Group 1: DOM Rendering Tests - One city per UTC offset
   // ============================================================================
   describe('DOM Rendering Tests (All UTC Offsets)', () => {
-    describe.each(UTC_OFFSET_CITIES)('UTC Offset: $offset ($name)', ({ tz: userTimezone, name: timezoneName, offset }) => {
+    describe.each(UTC_OFFSET_CITIES)('UTC Offset: $offset ($name)', ({ tz: userTimezone, name: timezoneName }) => {
       describe.each(DOM_RENDERING_TIME_RANGES)(
         'Time range: $start-$end ($name)',
         ({ start, end, name: rangeName }) => {
@@ -612,11 +615,6 @@ describe('Timezone-Aware Calendar Tests', () => {
             }
 
             const nextDay = getNextDayDate();
-            const browserTimezone = typeof window !== 'undefined' 
-              ? Intl.DateTimeFormat().resolvedOptions().timeZone 
-              : 'UTC';
-            
-            const timezones = createTimezoneContext(TEST_CALENDAR_TIMEZONE, userTimezone);
             logDayOpen(nextDay, TEST_CALENDAR_TIMEZONE, userTimezone);
 
             // Set user timezone and time range
@@ -691,11 +689,6 @@ describe('Timezone-Aware Calendar Tests', () => {
         }
 
         const nextDay = getNextDayDate();
-        const browserTimezone = typeof window !== 'undefined' 
-          ? Intl.DateTimeFormat().resolvedOptions().timeZone 
-          : 'UTC';
-        
-        const timezones = createTimezoneContext(TEST_CALENDAR_TIMEZONE, userTimezone);
         logDayOpen(nextDay, TEST_CALENDAR_TIMEZONE, userTimezone);
 
         // Set user timezone, time range, and default task duration to 30 minutes
@@ -744,7 +737,8 @@ describe('Timezone-Aware Calendar Tests', () => {
                 placement.duration = newDuration;
               }
             }}
-            onExternalDrop={(taskId, taskTitle, startTime, taskListTitle) => {
+            onExternalDrop={(taskId, taskTitle, startTime, _taskListTitle) => {
+              void _taskListTitle;
               const placement: TaskPlacement = {
                 id: `placement-${Date.now()}`,
                 taskId,
@@ -841,11 +835,6 @@ describe('Timezone-Aware Calendar Tests', () => {
         }
 
         const nextDay = getNextDayDate();
-        const browserTimezone = typeof window !== 'undefined' 
-          ? Intl.DateTimeFormat().resolvedOptions().timeZone 
-          : 'UTC';
-        
-        const timezones = createTimezoneContext(TEST_CALENDAR_TIMEZONE, userTimezone);
         logDayOpen(nextDay, TEST_CALENDAR_TIMEZONE, userTimezone);
 
         // Set user timezone, time range, and default task duration
@@ -889,8 +878,8 @@ describe('Timezone-Aware Calendar Tests', () => {
           expect(savedEvent.id).toBeDefined();
           
           logSave([placement], [{ time: '00:30', duration: 15 }], timezones);
-        } catch (error: any) {
-          const errorMessage = error?.message || String(error);
+        } catch (error: unknown) {
+          const errorMessage = getErrorMessage(error);
           if (errorMessage.includes('authentication') || errorMessage.includes('OAuth')) {
             throw new Error(
               `Event creation failed: Authentication error.\n` +
@@ -1036,11 +1025,6 @@ describe('Timezone-Aware Calendar Tests', () => {
         }
 
         const nextDay = getNextDayDate();
-        const browserTimezone = typeof window !== 'undefined' 
-          ? Intl.DateTimeFormat().resolvedOptions().timeZone 
-          : 'UTC';
-        
-        const timezones = createTimezoneContext(TEST_CALENDAR_TIMEZONE, userTimezone);
         logDayOpen(nextDay, TEST_CALENDAR_TIMEZONE, userTimezone);
 
         // Use business hours time range (11:00-18:00)

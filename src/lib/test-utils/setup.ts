@@ -1,4 +1,4 @@
-import { expect, afterEach, vi } from 'vitest';
+import { vi } from 'vitest';
 
 // Mock environment variables
 process.env.NEXT_PUBLIC_DEBUG = 'true';

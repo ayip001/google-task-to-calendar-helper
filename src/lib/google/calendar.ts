@@ -29,6 +29,37 @@ export async function getEventsForDay(
 ): Promise<GoogleCalendarEvent[]> {
   const calendar = createCalendarClient(accessToken);
 
+  const getOffsetMinutes = (utcDate: Date, targetTimezone: string): number => {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: targetTimezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(utcDate).reduce<Record<string, string>>((acc, part) => {
+      if (part.type !== 'literal') {
+        acc[part.type] = part.value;
+      }
+      return acc;
+    }, {});
+
+    const zonedAsUtc = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second)
+    );
+
+    return (zonedAsUtc - utcDate.getTime()) / (60 * 1000);
+  };
+
   // Calculate start and end of day in the specified timezone
   // If no timezone provided, use UTC
   let timeMin: string;
@@ -38,56 +69,16 @@ export async function getEventsForDay(
     // Parse the date and create ISO strings for start/end of day in the timezone
     // We need to find what UTC time corresponds to 00:00 and 23:59:59 in the timezone
     const [year, month, day] = date.split('-').map(Number);
+    const utcStartOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    const utcEndOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
 
-    // Create a reference date at noon to get the timezone offset
-    const refDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-
-    // Get the offset by comparing how the date appears in the timezone vs UTC
-    const tzFormatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-    const utcFormatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-
-    const getParts = (formatter: Intl.DateTimeFormat, d: Date) => {
-      const parts = formatter.formatToParts(d);
-      return {
-        hour: parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10),
-        day: parseInt(parts.find(p => p.type === 'day')?.value || '0', 10),
-      };
-    };
-
-    const tzParts = getParts(tzFormatter, refDate);
-    const utcParts = getParts(utcFormatter, refDate);
-
-    // Calculate offset in hours (positive = timezone is ahead of UTC)
-    let offsetHours = tzParts.hour - utcParts.hour;
-    if (tzParts.day !== utcParts.day) {
-      // Day crossed, adjust offset
-      if (tzParts.day > utcParts.day) offsetHours += 24;
-      else offsetHours -= 24;
-    }
-    // Normalize
-    if (offsetHours > 12) offsetHours -= 24;
-    if (offsetHours < -12) offsetHours += 24;
+    const offsetMinutesAtStart = getOffsetMinutes(utcStartOfDay, timezone);
+    const offsetMinutesAtEnd = getOffsetMinutes(utcEndOfDay, timezone);
 
     // Start of day in timezone = 00:00 in TZ = (00:00 - offset) in UTC
-    const startUTC = new Date(Date.UTC(year, month - 1, day, -offsetHours, 0, 0));
+    const startUTC = new Date(utcStartOfDay.getTime() - offsetMinutesAtStart * 60 * 1000);
     // End of day in timezone = 23:59:59 in TZ
-    const endUTC = new Date(Date.UTC(year, month - 1, day, 23 - offsetHours, 59, 59));
+    const endUTC = new Date(utcEndOfDay.getTime() - offsetMinutesAtEnd * 60 * 1000);
 
     timeMin = startUTC.toISOString();
     timeMax = endUTC.toISOString();
@@ -228,8 +219,8 @@ export async function createCalendarEvents(
     try {
       const event = await createCalendarEvent(accessToken, calendarId, placement, taskColor);
       results.push(event);
-    } catch (error: any) {
-      const errorMessage = error?.message || String(error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       errors.push(`Failed to create event for "${placement.taskTitle}": ${errorMessage}`);
     }
   }

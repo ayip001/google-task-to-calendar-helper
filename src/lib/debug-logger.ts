@@ -299,46 +299,6 @@ function formatTimeInAllTimezones(date: Date, timezones: TimezoneContext): Forma
   };
 }
 
-function formatTimeInAllTimezonesWithOffsets(date: Date, timezones: TimezoneContext): FormattedTimeWithOffsets {
-  const dateFormatOptions: Intl.DateTimeFormatOptions = {
-    year: '2-digit',
-    month: '2-digit',
-    day: '2-digit',
-  };
-  
-  const timeFormatOptions: Intl.DateTimeFormatOptions = {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  };
-
-  const referenceTimezone = timezones.userSelected;
-
-  const formatDateTime = (timezone: string): string => {
-    const dateStr = new Intl.DateTimeFormat('en-GB', {
-      ...dateFormatOptions,
-      timeZone: timezone,
-    }).format(date);
-    const timeStr = new Intl.DateTimeFormat('en-GB', {
-      ...timeFormatOptions,
-      timeZone: timezone,
-    }).format(date);
-    return `${dateStr} ${timeStr}`;
-  };
-
-  const browserOffset = calculateDayOffset(date, timezones.browser, referenceTimezone);
-  const calendarOffset = calculateDayOffset(date, timezones.calendar, referenceTimezone);
-
-  return {
-    browser: formatDateTime(timezones.browser),
-    calendar: formatDateTime(timezones.calendar),
-    user: formatDateTime(timezones.userSelected),
-    utc: date.toISOString().replace('T', ' ').slice(0, 16) + 'Z',
-    browserOffset,
-    calendarOffset,
-  };
-}
-
 export function createTimezoneContext(
   calendarTimezone?: string,
   userTimezone?: string
@@ -584,9 +544,8 @@ function formatRenderedTimeRangeLabel(
   // Dual timezone format: "userTime | calendarTime"
   const userTime = parts[0].trim();
   const calendarTime = parts[1].trim();
-  
+
   // Calculate day offset for calendar time
-  const [calHours, calMinutes] = calendarTime.split(':').map(Number);
   const userDateStr = new Intl.DateTimeFormat('en-CA', {
     timeZone: userTimezone,
     year: 'numeric',

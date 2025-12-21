@@ -163,13 +163,6 @@ export function SettingsPanel({ settings, calendars, onSave, showLabel = false, 
     return timeOptions.filter((option) => timeToMinutes(option.value) > startMinutes);
   };
 
-  // Check if calendar range is valid (at least 1 hour)
-  const calendarRangeValid = useMemo(() => {
-    const minMinutes = timeToMinutes(localSettings.slotMinTime);
-    const maxMinutes = timeToMinutes(localSettings.slotMaxTime);
-    return maxMinutes - minMinutes >= 60;
-  }, [localSettings.slotMinTime, localSettings.slotMaxTime]);
-
   // Check which working hours are outside calendar range
   const workingHoursWarnings = useMemo(() => {
     const calendarMin = timeToMinutes(localSettings.slotMinTime);
@@ -185,43 +178,6 @@ export function SettingsPanel({ settings, calendars, onSave, showLabel = false, 
       return null;
     }).filter(Boolean);
   }, [localSettings.workingHours, localSettings.slotMinTime, localSettings.slotMaxTime, localSettings.timeFormat]);
-
-  // Handle calendar range change with validation
-  const handleSlotMinTimeChange = (value: string) => {
-    const newMin = timeToMinutes(value);
-    const currentMax = timeToMinutes(localSettings.slotMaxTime);
-
-    // Ensure at least 1 hour gap
-    if (currentMax - newMin < 60) {
-      // Adjust max time to be 1 hour after new min
-      const newMaxHour = Math.min(23, Math.floor(newMin / 60) + 1);
-      setLocalSettings({
-        ...localSettings,
-        slotMinTime: value,
-        slotMaxTime: `${newMaxHour.toString().padStart(2, '0')}:00`,
-      });
-    } else {
-      setLocalSettings({ ...localSettings, slotMinTime: value });
-    }
-  };
-
-  const handleSlotMaxTimeChange = (value: string) => {
-    const currentMin = timeToMinutes(localSettings.slotMinTime);
-    const newMax = timeToMinutes(value);
-
-    // Ensure at least 1 hour gap
-    if (newMax - currentMin < 60) {
-      // Adjust min time to be 1 hour before new max
-      const newMinHour = Math.max(0, Math.floor(newMax / 60) - 1);
-      setLocalSettings({
-        ...localSettings,
-        slotMinTime: `${newMinHour.toString().padStart(2, '0')}:00`,
-        slotMaxTime: value,
-      });
-    } else {
-      setLocalSettings({ ...localSettings, slotMaxTime: value });
-    }
-  };
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

@@ -5,6 +5,9 @@ import { getTestSession, createAuthenticatedFetch } from './test-auth';
 
 const TEST_TASK_PREFIX = '[TEST]';
 
+type FetchError = Error & { code?: string };
+type ApiResponse = { errors?: string[]; error?: string; details?: unknown; events?: GoogleCalendarEvent[] };
+
 let testFetch: typeof fetch | null = null;
 
 export async function getTestFetch(): Promise<typeof fetch> {
@@ -125,7 +128,7 @@ export async function deleteTestEvent(
     // For other errors, don't block - just return silently
     // The event might already be deleted or there might be a transient error
     return;
-  } catch (error: any) {
+  } catch {
     // Silently ignore all errors - deletion failures are non-fatal for tests
     // This includes network errors, timeouts, and API errors
     return;
@@ -161,7 +164,7 @@ export async function deleteTestEvents(
 
     // For other errors, don't block - just return silently
     return;
-  } catch (error: any) {
+  } catch {
     // Silently ignore all errors - deletion failures are non-fatal for tests
     return;
   }
@@ -188,8 +191,8 @@ export async function createTestEvent(
         taskColor,
       }),
     });
-  } catch (fetchError: any) {
-    if (fetchError.message?.includes('fetch failed') || fetchError.code === 'ECONNREFUSED') {
+  } catch (fetchError: unknown) {
+    if (fetchError instanceof Error && (fetchError.message?.includes('fetch failed') || (fetchError as FetchError).code === 'ECONNREFUSED')) {
       throw new Error(
         `Cannot connect to server at ${baseUrl}. Please ensure the Next.js dev server is running: npm run dev`
       );
@@ -198,12 +201,12 @@ export async function createTestEvent(
   }
 
   // Parse response regardless of status to get error details
-  let result: any;
+  let result: ApiResponse;
   let responseText: string;
   try {
     responseText = await response.text();
     try {
-      result = JSON.parse(responseText);
+      result = JSON.parse(responseText) as ApiResponse;
     } catch {
       result = { error: responseText || `HTTP ${response.status}: ${response.statusText}` };
     }

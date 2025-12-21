@@ -3,6 +3,16 @@ import { getAuthSession } from '@/lib/auth-helper';
 import { getCalendars, getEventsForDay, getEventsForMonth, createCalendarEvents, deleteCalendarEvent } from '@/lib/google/calendar';
 import { TaskPlacement } from '@/types';
 
+type ErrorWithDetails = {
+  message?: string;
+  response?: { data?: unknown };
+  errors?: unknown;
+};
+
+function isErrorWithDetails(value: unknown): value is ErrorWithDetails {
+  return typeof value === 'object' && value !== null;
+}
+
 export async function GET(request: Request) {
   const session = await getAuthSession(request);
 
@@ -92,11 +102,11 @@ export async function POST(request: Request) {
       events: result.success,
       errors: result.errors,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating calendar events:', error);
     // Include more details in the error response for debugging
-    const errorMessage = error?.message || 'Failed to create calendar events';
-    const errorDetails = error?.response?.data || error?.errors || null;
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create calendar events';
+    const errorDetails = isErrorWithDetails(error) ? error.response?.data || error.errors || null : null;
     return NextResponse.json({ 
       error: errorMessage,
       details: errorDetails,
@@ -182,9 +192,9 @@ export async function DELETE(request: Request) {
       deletedCount: successCount,
       errors: errors.length > 0 ? errors : undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting calendar event:', error);
-    const errorMessage = error?.message || 'Failed to delete calendar event';
+    const errorMessage = error instanceof Error ? error.message : 'Failed to delete calendar event';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

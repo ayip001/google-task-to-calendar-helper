@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 
-export async function POST(request: Request) {
+export async function POST() {
   const session = await auth();
 
   if (!session?.accessToken) {

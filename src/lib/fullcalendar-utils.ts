@@ -1,5 +1,3 @@
-import type { CalendarApi } from '@fullcalendar/core';
-
 export interface RenderedSlot {
   label: string;
   time: Date;
@@ -71,12 +69,10 @@ export function getAllRenderedSlotLabels(
 
   // Find the timegrid body first, then search within it
   const timegridBody = containerElement.querySelector('.fc-timegrid-body');
-  const timegridCols = containerElement.querySelectorAll('.fc-timegrid-col');
   const searchRoot = timegridBody || containerElement;
 
   // Try multiple selectors to find slot labels
   // FullCalendar v6 uses different structure - check thead for labels
-  const thead = containerElement.querySelector('thead');
   const selectors = [
     'thead .fc-timegrid-slot-label',
     'thead td.fc-timegrid-slot-label',
@@ -169,18 +165,13 @@ export function getRenderedTimeRange(
   };
 }
 
-export function getSlotLabelForTime(
-  targetDate: Date,
-  containerElement: HTMLElement,
-  calendarApi?: CalendarApi
-): string | null {
+export function getSlotLabelForTime(targetDate: Date, containerElement: HTMLElement): string | null {
   const slots = getAllRenderedSlotLabels(containerElement);
 
   if (slots.length === 0) {
     return null;
   }
 
-  const targetTime = targetDate.getTime();
   const targetHour = targetDate.getHours();
   const targetMinute = targetDate.getMinutes();
 

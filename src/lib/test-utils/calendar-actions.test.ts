@@ -15,6 +15,12 @@ import { extractDayOpenData, extractTaskPlacementData, extractSaveData } from '@
 import { UserSettings } from '@/types';
 import { getTestSession } from './test-auth';
 
+type FetchError = Error & { code?: string };
+
+function isFetchError(error: unknown): error is FetchError {
+  return error instanceof Error;
+}
+
 describe('Minimal Calendar Action Test', () => {
   const mockCalendarId = 'primary';
   const mockTaskColor = '#4285F4';
@@ -98,8 +104,8 @@ describe('Minimal Calendar Action Test', () => {
       updatedSettings = await saveSettings(testSettings);
       expect(updatedSettings.slotMinTime).toBe('00:00');
       expect(updatedSettings.slotMaxTime).toBe('01:00');
-    } catch (error: any) {
-      if (error.message?.includes('fetch failed') || error.code === 'EPERM') {
+    } catch (error: unknown) {
+      if (isFetchError(error) && (error.message?.includes('fetch failed') || error.code === 'EPERM')) {
         throw new Error(
           'Cannot connect to server. Please ensure the Next.js dev server is running on http://localhost:3000'
         );

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getAuthSession } from '@/lib/auth-helper';
 import { createCalendar, deleteCalendar } from '@/lib/google/calendar';
 
+type ErrorWithMessage = { message?: string };
+
 export async function POST(request: Request) {
   const session = await getAuthSession(request);
 
@@ -23,9 +25,9 @@ export async function POST(request: Request) {
     const calendar = await createCalendar(session.accessToken, summary, timeZone);
 
     return NextResponse.json(calendar);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating test calendar:', error);
-    const errorMessage = error?.message || 'Failed to create test calendar';
+    const errorMessage = (error as ErrorWithMessage)?.message || 'Failed to create test calendar';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
@@ -48,9 +50,9 @@ export async function DELETE(request: Request) {
     await deleteCalendar(session.accessToken, calendarId);
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting test calendar:', error);
-    const errorMessage = error?.message || 'Failed to delete test calendar';
+    const errorMessage = (error as ErrorWithMessage)?.message || 'Failed to delete test calendar';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
