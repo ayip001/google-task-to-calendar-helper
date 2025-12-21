@@ -44,80 +44,47 @@ interface DayCalendarProps {
   calendarTimezone?: string;
 }
 
-// Helper to format time directly from Date's local methods (for FullCalendar's adjusted dates)
-// FullCalendar sets up arg.date so getHours()/getMinutes() return the display timezone time
-function formatTimeFromLocalMethods(date: Date, format: '12h' | '24h'): string {
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-
-  if (format === '12h') {
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const hour12 = hours % 12 || 12;
-    return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`;
-  } else {
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-  }
-}
-
-// Helper to calculate time in a secondary timezone given the primary timezone time
-// Takes the local Date (with time in primary timezone) and calculates what time it would be in secondary timezone
-function getSecondaryTimezoneTime(
+// Helper to format time in a specific timezone and calculate day offset relative to selected timezone
+function formatTimeInTimezone(
   date: Date,
-  primaryTimezone: string,
-  secondaryTimezone: string,
-  targetDateStr: string,
+  timezone: string,
+  selectedTimezone: string,
   format: '12h' | '24h'
 ): { time: string; dayOffset: number } {
-  // Get the hours/minutes from the Date (these represent time in primary timezone)
-  const primaryHours = date.getHours();
-  const primaryMinutes = date.getMinutes();
-
-  // Calculate the offset between timezones for this specific date
-  const [year, month, day] = targetDateStr.split('-').map(Number);
-  const refDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-
-  const primaryFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: primaryTimezone,
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
     hour: 'numeric',
-    hour12: false,
-  });
-  const secondaryFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: secondaryTimezone,
-    hour: 'numeric',
-    hour12: false,
+    minute: '2-digit',
+    hour12: format === '12h',
   });
 
-  const primaryRefHour = parseInt(primaryFormatter.format(refDate), 10);
-  const secondaryRefHour = parseInt(secondaryFormatter.format(refDate), 10);
+  // Get the full date in both timezones to properly calculate day offset
+  // Using en-CA locale gives YYYY-MM-DD format which is easy to compare
+  const targetDateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const selectedDateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: selectedTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
 
-  // Offset to add to primary time to get secondary time
-  let offsetHours = secondaryRefHour - primaryRefHour;
-  if (offsetHours > 12) offsetHours -= 24;
-  if (offsetHours < -12) offsetHours += 24;
+  const targetDateStr = targetDateFormatter.format(date);
+  const selectedDateStr = selectedDateFormatter.format(date);
 
-  // Apply offset
-  let secondaryHours = primaryHours + offsetHours;
-  let dayOffset = 0;
+  // Parse dates and calculate difference in days
+  const targetDate = new Date(targetDateStr + 'T00:00:00');
+  const selectedDate = new Date(selectedDateStr + 'T00:00:00');
+  const dayOffset = Math.round((targetDate.getTime() - selectedDate.getTime()) / (24 * 60 * 60 * 1000));
 
-  if (secondaryHours >= 24) {
-    secondaryHours -= 24;
-    dayOffset = 1;
-  } else if (secondaryHours < 0) {
-    secondaryHours += 24;
-    dayOffset = -1;
-  }
-
-  // Format the time
-  let time: string;
-  if (format === '12h') {
-    const period = secondaryHours >= 12 ? 'PM' : 'AM';
-    const hour12 = secondaryHours % 12 || 12;
-    time = `${hour12}:${String(primaryMinutes).padStart(2, '0')} ${period}`;
-  } else {
-    time = `${String(secondaryHours).padStart(2, '0')}:${String(primaryMinutes).padStart(2, '0')}`;
-  }
-
-  return { time, dayOffset };
+  return {
+    time: formatter.format(date),
+    dayOffset,
+  };
 }
 
 export function DayCalendar({
@@ -401,15 +368,21 @@ export function DayCalendar({
         );
         
         // If slot label not found, calculate it from the time using the same format as renderSlotLabel
-        // IMPORTANT: FullCalendar's event.start is a "fake local" Date - use local methods
         if (!targetSlotLabel) {
           const slotDate = info.event.start;
           if (hasDifferentTimezones && selectedTimezone && calendarTimezone) {
-            const primaryTime = formatTimeFromLocalMethods(slotDate, settings.timeFormat);
-            const secondary = getSecondaryTimezoneTime(slotDate, selectedTimezone, calendarTimezone, date, settings.timeFormat);
-            targetSlotLabel = `${primaryTime} | ${secondary.time}`;
+            const selTz = formatTimeInTimezone(slotDate, selectedTimezone, selectedTimezone, settings.timeFormat);
+            const calTz = formatTimeInTimezone(slotDate, calendarTimezone, selectedTimezone, settings.timeFormat);
+            targetSlotLabel = `${selTz.time} | ${calTz.time}`;
           } else {
-            targetSlotLabel = formatTimeFromLocalMethods(slotDate, settings.timeFormat);
+            // Use displayTimezone to avoid browser timezone dependency
+            const timeStr = slotDate.toLocaleTimeString('en-US', {
+              timeZone: displayTimezone || undefined,
+              hour: settings.timeFormat === '12h' ? 'numeric' : '2-digit',
+              minute: '2-digit',
+              hour12: settings.timeFormat === '12h',
+            });
+            targetSlotLabel = timeStr;
           }
         }
 
@@ -478,15 +451,21 @@ export function DayCalendar({
         );
         
         // If slot label not found, calculate it from the time using the same format as renderSlotLabel
-        // IMPORTANT: FullCalendar's event.start is a "fake local" Date - use local methods
         if (!targetSlotLabel) {
           const slotDate = info.event.start;
           if (hasDifferentTimezones && selectedTimezone && calendarTimezone) {
-            const primaryTime = formatTimeFromLocalMethods(slotDate, settings.timeFormat);
-            const secondary = getSecondaryTimezoneTime(slotDate, selectedTimezone, calendarTimezone, date, settings.timeFormat);
-            targetSlotLabel = `${primaryTime} | ${secondary.time}`;
+            const selTz = formatTimeInTimezone(slotDate, selectedTimezone, selectedTimezone, settings.timeFormat);
+            const calTz = formatTimeInTimezone(slotDate, calendarTimezone, selectedTimezone, settings.timeFormat);
+            targetSlotLabel = `${selTz.time} | ${calTz.time}`;
           } else {
-            targetSlotLabel = formatTimeFromLocalMethods(slotDate, settings.timeFormat);
+            // Use displayTimezone to avoid browser timezone dependency
+            const timeStr = slotDate.toLocaleTimeString('en-US', {
+              timeZone: displayTimezone || undefined,
+              hour: settings.timeFormat === '12h' ? 'numeric' : '2-digit',
+              minute: '2-digit',
+              hour12: settings.timeFormat === '12h',
+            });
+            targetSlotLabel = timeStr;
           }
         }
 
@@ -551,45 +530,41 @@ export function DayCalendar({
   const slotMinTime = rawSlotMinTime;
 
   // Custom slot label content for dual timezone display
-  // IMPORTANT: FullCalendar provides arg.date as a "fake local" Date where getHours()/getMinutes()
-  // already return the correct time in the display timezone. Using toLocaleTimeString with a
-  // timezone would double-convert and give wrong results.
   const renderSlotLabel = useCallback((arg: SlotLabelContentArg) => {
     const slotDate = arg.date;
 
     if (!hasDifferentTimezones || !selectedTimezone || !calendarTimezone) {
-      // Single timezone - read directly from local methods since FullCalendar has set them up
-      const timeStr = formatTimeFromLocalMethods(slotDate, settings.timeFormat);
+      // Single timezone - format using displayTimezone to avoid browser timezone dependency
+      const timeStr = slotDate.toLocaleTimeString('en-US', {
+        timeZone: displayTimezone || undefined,
+        hour: settings.timeFormat === '12h' ? 'numeric' : '2-digit',
+        minute: '2-digit',
+        hour12: settings.timeFormat === '12h',
+      });
       return <span className="text-xs">{timeStr}</span>;
     }
 
     // Dual timezone display
-    // Primary (selected) timezone: read directly from Date's local methods
-    // Secondary (calendar) timezone: calculate offset and apply
-    const primaryTime = formatTimeFromLocalMethods(slotDate, settings.timeFormat);
-    const secondary = getSecondaryTimezoneTime(
-      slotDate,
-      selectedTimezone,
-      calendarTimezone,
-      date,
-      settings.timeFormat
-    );
+    // Your TZ (selected) is the base - shown above, bold
+    // Calendar TZ shown below, muted, with +1/-1 if different day
+    const selTz = formatTimeInTimezone(slotDate, selectedTimezone, selectedTimezone, settings.timeFormat);
+    const calTz = formatTimeInTimezone(slotDate, calendarTimezone, selectedTimezone, settings.timeFormat);
 
     // Show actual day offset (handles extreme timezone differences like +2 or -2)
-    const calDayIndicator = secondary.dayOffset !== 0
-      ? <span className="text-[9px] text-muted-foreground ml-0.5">{secondary.dayOffset > 0 ? `+${secondary.dayOffset}` : secondary.dayOffset}</span>
+    const calDayIndicator = calTz.dayOffset !== 0
+      ? <span className="text-[9px] text-muted-foreground ml-0.5">{calTz.dayOffset > 0 ? `+${calTz.dayOffset}` : calTz.dayOffset}</span>
       : null;
 
     return (
       <div className="flex flex-col text-[10px] leading-tight -my-1">
-        <span className="font-medium">{primaryTime}</span>
+        <span className="font-medium">{selTz.time}</span>
         <span className="text-muted-foreground flex items-center">
-          {secondary.time}
+          {calTz.time}
           {calDayIndicator}
         </span>
       </div>
     );
-  }, [hasDifferentTimezones, calendarTimezone, selectedTimezone, date, settings.timeFormat]);
+  }, [hasDifferentTimezones, calendarTimezone, selectedTimezone, displayTimezone, settings.timeFormat]);
 
   // Log calendar load when dates are set
   useEffect(() => {
