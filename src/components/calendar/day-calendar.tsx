@@ -110,49 +110,6 @@ export function DayCalendar({
   // Calendar timezone should always exist; this is a fallback that should never be needed
   const displayTimezone = selectedTimezone || calendarTimezone;
 
-  // Convert time from display timezone to UTC for FullCalendar
-  // FullCalendar interprets slotMinTime/slotMaxTime as UTC when timeZone is set
-  // IMPORTANT: Uses target date (not now) to calculate offset correctly for DST
-  const convertToUTC = useCallback((timeStr: string, allowOver24 = false): string => {
-    if (!displayTimezone) return timeStr;
-
-    const [hours, minutes] = timeStr.split(':').map(Number);
-
-    // Use target date at noon to calculate timezone offset (handles DST correctly)
-    const [year, month, day] = date.split('-').map(Number);
-    const refDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-
-    const tzFormatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: displayTimezone,
-      hour: 'numeric',
-      hour12: false,
-    });
-    const utcFormatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',
-      hour: 'numeric',
-      hour12: false,
-    });
-
-    const tzHour = parseInt(tzFormatter.format(refDate), 10);
-    const utcHour = parseInt(utcFormatter.format(refDate), 10);
-
-    // Offset in hours (UTC - TZ), i.e., what to add to TZ time to get UTC
-    let offsetHours = utcHour - tzHour;
-
-    // Normalize to -12 to +12 range
-    if (offsetHours > 12) offsetHours -= 24;
-    if (offsetHours < -12) offsetHours += 24;
-
-    // Apply offset to convert from display timezone to UTC
-    let newHours = hours + offsetHours;
-
-    // Handle wraparound - but allow >24 for slotMaxTime to avoid min > max issues
-    if (newHours < 0) newHours += 24;
-    if (!allowOver24 && newHours >= 24) newHours -= 24;
-
-    return `${newHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  }, [displayTimezone, date]);
-
   useEffect(() => {
     if (calendarRef.current) {
       const calendarApi = calendarRef.current.getApi();
@@ -498,36 +455,19 @@ export function DayCalendar({
   };
 
   // Convert working hours to FullCalendar businessHours format
-  // FullCalendar interprets these as UTC when timeZone is set, so we convert from display timezone
-  // endTime uses allowOver24=true to handle negative timezone offsets
+  // Note: FullCalendar interprets these times in the configured timezone (displayTimezone),
+  // so we pass them directly without conversion
   const businessHours = settings.workingHours.map((hours) => ({
     daysOfWeek: [0, 1, 2, 3, 4, 5, 6], // All days
-    startTime: convertToUTC(hours.start),
-    endTime: convertToUTC(hours.end, true),
+    startTime: hours.start,
+    endTime: hours.end,
   }));
 
   // Use fallback values if settings are missing (e.g., from old saved settings)
-  // FullCalendar interprets these as UTC when timeZone is set, so we convert from display timezone
-  // slotMaxTime uses allowOver24=true to handle negative timezone offsets that would push it past midnight
-  const rawSlotMinTime = convertToUTC(settings.slotMinTime || '06:00');
-  const rawSlotMaxTime = convertToUTC(settings.slotMaxTime || '22:00', true);
-
-  // Fix invalid range that can occur when timezone conversion causes min > max
-  // This happens for timezones ahead of UTC (e.g., Paris UTC+1) when the range crosses UTC midnight
-  // Example: Paris 00:00-01:00 → UTC 23:00-00:00 (invalid), should become 23:00-24:00
-  const [minH] = rawSlotMinTime.split(':').map(Number);
-  const [maxH] = rawSlotMaxTime.split(':').map(Number);
-  const originalMinH = parseInt((settings.slotMinTime || '06:00').split(':')[0], 10);
-  const originalMaxH = parseInt((settings.slotMaxTime || '22:00').split(':')[0], 10);
-
-  let slotMaxTime = rawSlotMaxTime;
-  // If original range was valid (min < max) but converted range is invalid (max <= min),
-  // add 24 to max to create a valid range spanning midnight in UTC
-  if (originalMaxH > originalMinH && maxH <= minH) {
-    const [h, m] = rawSlotMaxTime.split(':');
-    slotMaxTime = `${parseInt(h, 10) + 24}:${m}`;
-  }
-  const slotMinTime = rawSlotMinTime;
+  // Note: FullCalendar's slotMinTime/slotMaxTime are "duration from midnight" values
+  // interpreted in the configured timezone, not UTC times
+  const slotMinTime = settings.slotMinTime || '06:00';
+  const slotMaxTime = settings.slotMaxTime || '22:00';
 
   // Custom slot label content for dual timezone display
   const renderSlotLabel = useCallback((arg: SlotLabelContentArg) => {
