@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-helper';
 import { getUserSettings, setUserSettings } from '@/lib/kv';
 import { UserSettings } from '@/types';
+import { logSettingsSave } from '@/lib/debug-logger';
 
-export async function GET() {
-  const session = await auth();
+export async function GET(request: Request) {
+  const session = await getAuthSession(request);
 
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,7 +21,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const session = await auth();
+  const session = await getAuthSession(request);
 
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -30,7 +31,13 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const updates = body as Partial<UserSettings>;
 
+    // Get previous settings for logging
+    const previousSettings = await getUserSettings(session.user.email);
     const settings = await setUserSettings(session.user.email, updates);
+    
+    // Log settings save
+    logSettingsSave(previousSettings, settings);
+    
     return NextResponse.json(settings);
   } catch (error) {
     console.error('Error updating settings:', error);

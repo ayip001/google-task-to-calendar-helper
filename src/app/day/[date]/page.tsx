@@ -34,6 +34,7 @@ import {
   filterTasks,
 } from '@/hooks/use-data';
 import { TaskPlacement, TaskFilter, GoogleTask } from '@/types';
+import { logSave, logAutoFit, createTimezoneContext } from '@/lib/debug-logger';
 import {
   Calendar,
   ChevronLeft,
@@ -62,11 +63,21 @@ export default function DayPage() {
 
   const { tasks, taskLists, loading: tasksLoading } = useTasks();
   const { settings, loading: settingsLoading, updateSettings } = useSettings();
-  const { calendars } = useCalendars();
+  const { calendars, refetch: refetchCalendars } = useCalendars();
+
+  // Get the selected calendar's timezone
+  const selectedCalendarTimezone = useMemo(() => {
+    const selectedCalendar = calendars.find((c) => c.id === settings.selectedCalendarId);
+    return selectedCalendar?.timeZone;
+  }, [calendars, settings.selectedCalendarId]);
+
+  // Display timezone: user-selected timezone, or fall back to calendar timezone
+  const displayTimezone = settings.timezone || selectedCalendarTimezone;
+
   const {
     events,
     refetch: refetchEvents,
-  } = useCalendarEvents(dateParam, settings.selectedCalendarId);
+  } = useCalendarEvents(dateParam, settings.selectedCalendarId, displayTimezone, selectedCalendarTimezone);
   const {
     placements,
     addPlacement,
@@ -131,6 +142,14 @@ export default function DayPage() {
     }
   };
 
+  const handlePlacementResize = async (placementId: string, newDuration: number) => {
+    try {
+      await updatePlacement(placementId, { duration: newDuration });
+    } catch {
+      toast.error('Failed to update placement duration');
+    }
+  };
+
   const handleExternalDrop = async (taskId: string, taskTitle: string, startTime: string, listTitle?: string) => {
     try {
       const newPlacement: TaskPlacement = {
@@ -165,9 +184,28 @@ export default function DayPage() {
     }
 
     try {
-      const result = await runAutoFit(dateParam, filteredTasks);
+      const result = await runAutoFit(dateParam, filteredTasks, displayTimezone);
       setPlacements(result.allPlacements);
       toast.success(result.message);
+
+      // Log auto-fit operation to browser console
+      if (selectedCalendarTimezone) {
+        const timezones = createTimezoneContext(selectedCalendarTimezone, displayTimezone);
+        const unplacedTasksData = result.unplacedTasks.map((task) => ({
+          id: task.id,
+          title: task.title,
+          listTitle: task.listTitle,
+        }));
+        logAutoFit(
+          dateParam,
+          tasks.length,
+          filteredTasks.length,
+          result.placements,
+          unplacedTasksData,
+          timezones,
+          settings.workingHours
+        );
+      }
     } catch {
       toast.error('Failed to run auto-fit');
     }
@@ -177,7 +215,26 @@ export default function DayPage() {
   const handleAddTask = async (task: GoogleTask) => {
     try {
       // Try to auto-fit this single task
-      const result = await runAutoFit(dateParam, [task]);
+      const result = await runAutoFit(dateParam, [task], displayTimezone);
+
+      // Log auto-fit operation to browser console
+      if (selectedCalendarTimezone) {
+        const timezones = createTimezoneContext(selectedCalendarTimezone, displayTimezone);
+        const unplacedTasksData = result.unplacedTasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          listTitle: t.listTitle,
+        }));
+        logAutoFit(
+          dateParam,
+          1,
+          1,
+          result.placements,
+          unplacedTasksData,
+          timezones,
+          settings.workingHours
+        );
+      }
 
       if (result.placements.length > 0) {
         // Task was placed in working hours
@@ -275,6 +332,24 @@ export default function DayPage() {
   const handleSaveToCalendar = async () => {
     setSaving(true);
     try {
+      const timezones = createTimezoneContext(selectedCalendarTimezone, displayTimezone);
+      
+      const displayedTimes = placements.map((placement) => {
+        const date = new Date(placement.startTime);
+        const options: Intl.DateTimeFormatOptions = {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: settings.timeFormat === '12h',
+        };
+        if (selectedCalendarTimezone) {
+          options.timeZone = selectedCalendarTimezone;
+        }
+        const time = new Intl.DateTimeFormat('en-US', options).format(date);
+        return { time, duration: placement.duration };
+      });
+
+      logSave(placements, displayedTimes, timezones);
+
       const response = await fetch('/api/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -368,6 +443,7 @@ export default function DayPage() {
               settings={settings}
               calendars={calendars}
               onSave={updateSettings}
+              onRefetchCalendars={refetchCalendars}
             />
 
             <DropdownMenu>
@@ -439,6 +515,7 @@ export default function DayPage() {
                     calendars={calendars}
                     onSave={updateSettings}
                     showLabel={true}
+                    onRefetchCalendars={refetchCalendars}
                   />
 
                   <Button
@@ -493,10 +570,12 @@ export default function DayPage() {
             events={events}
             placements={placements}
             onPlacementDrop={handlePlacementDrop}
+            onPlacementResize={handlePlacementResize}
             onExternalDrop={handleExternalDrop}
             onPlacementClick={handlePlacementClick}
             onPastTimeDrop={() => toast.error('Cannot place tasks in the past')}
             settings={settings}
+            calendarTimezone={selectedCalendarTimezone}
           />
         </div>
 
@@ -521,10 +600,12 @@ export default function DayPage() {
               events={events}
               placements={placements}
               onPlacementDrop={handlePlacementDrop}
+              onPlacementResize={handlePlacementResize}
               onExternalDrop={handleExternalDrop}
               onPlacementClick={handlePlacementClick}
               onPastTimeDrop={() => toast.error('Cannot place tasks in the past')}
               settings={settings}
+              calendarTimezone={selectedCalendarTimezone}
             />
           </div>
         ) : (
@@ -550,6 +631,9 @@ export default function DayPage() {
         onConfirm={handleSaveToCalendar}
         saving={saving}
         taskColor={settings.taskColor}
+        calendarTimezone={selectedCalendarTimezone}
+        timeFormat={settings.timeFormat}
+        userTimezone={displayTimezone}
       />
     </div>
   );

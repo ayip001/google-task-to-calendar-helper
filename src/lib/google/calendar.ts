@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { GoogleCalendarEvent, GoogleCalendar, TaskPlacement } from '@/types';
 import { UTILITY_MARKER } from '@/lib/constants';
+import { logApiCall, createTimezoneContext } from '@/lib/debug-logger';
 
 export function createCalendarClient(accessToken: string) {
   const auth = new google.auth.OAuth2();
@@ -16,28 +17,96 @@ export async function getCalendars(accessToken: string): Promise<GoogleCalendar[
     id: item.id!,
     summary: item.summary!,
     primary: item.primary ?? undefined,
+    timeZone: item.timeZone ?? undefined,
   }));
 }
 
 export async function getEventsForDay(
   accessToken: string,
   calendarId: string,
-  date: string
+  date: string,
+  timezone?: string
 ): Promise<GoogleCalendarEvent[]> {
   const calendar = createCalendarClient(accessToken);
 
-  const startOfDay = new Date(`${date}T00:00:00`);
-  const endOfDay = new Date(`${date}T23:59:59`);
+  // Calculate start and end of day in the specified timezone
+  // If no timezone provided, use UTC
+  let timeMin: string;
+  let timeMax: string;
+
+  if (timezone) {
+    // Parse the date and create ISO strings for start/end of day in the timezone
+    // We need to find what UTC time corresponds to 00:00 and 23:59:59 in the timezone
+    const [year, month, day] = date.split('-').map(Number);
+
+    // Create a reference date at noon to get the timezone offset
+    const refDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+
+    // Get the offset by comparing how the date appears in the timezone vs UTC
+    const tzFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const utcFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+
+    const getParts = (formatter: Intl.DateTimeFormat, d: Date) => {
+      const parts = formatter.formatToParts(d);
+      return {
+        hour: parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10),
+        day: parseInt(parts.find(p => p.type === 'day')?.value || '0', 10),
+      };
+    };
+
+    const tzParts = getParts(tzFormatter, refDate);
+    const utcParts = getParts(utcFormatter, refDate);
+
+    // Calculate offset in hours (positive = timezone is ahead of UTC)
+    let offsetHours = tzParts.hour - utcParts.hour;
+    if (tzParts.day !== utcParts.day) {
+      // Day crossed, adjust offset
+      if (tzParts.day > utcParts.day) offsetHours += 24;
+      else offsetHours -= 24;
+    }
+    // Normalize
+    if (offsetHours > 12) offsetHours -= 24;
+    if (offsetHours < -12) offsetHours += 24;
+
+    // Start of day in timezone = 00:00 in TZ = (00:00 - offset) in UTC
+    const startUTC = new Date(Date.UTC(year, month - 1, day, -offsetHours, 0, 0));
+    // End of day in timezone = 23:59:59 in TZ
+    const endUTC = new Date(Date.UTC(year, month - 1, day, 23 - offsetHours, 59, 59));
+
+    timeMin = startUTC.toISOString();
+    timeMax = endUTC.toISOString();
+  } else {
+    // Fallback: use date as UTC (old behavior)
+    timeMin = `${date}T00:00:00.000Z`;
+    timeMax = `${date}T23:59:59.999Z`;
+  }
 
   const response = await calendar.events.list({
     calendarId,
-    timeMin: startOfDay.toISOString(),
-    timeMax: endOfDay.toISOString(),
+    timeMin,
+    timeMax,
     singleEvents: true,
     orderBy: 'startTime',
   });
 
-  return (response.data.items || [])
+  const items = response.data.items || [];
+  const events = items
     .filter((item) => item.start?.dateTime && item.end?.dateTime)
     .map((item) => ({
       id: item.id!,
@@ -55,6 +124,11 @@ export async function getEventsForDay(
       },
       colorId: item.colorId ?? undefined,
     }));
+
+  const timezones = createTimezoneContext(undefined, timezone);
+  logApiCall('getEventsForDay', { date, calendarId, timezone }, { events, count: events.length }, timezones);
+
+  return events;
 }
 
 export async function getEventsForMonth(
@@ -105,6 +179,8 @@ export async function createCalendarEvent(
 ): Promise<GoogleCalendarEvent> {
   const calendar = createCalendarClient(accessToken);
 
+  // placement.startTime is actual UTC (e.g., "2024-12-20T02:00:00.000Z" for 10am HK)
+  // Google Calendar API correctly interprets UTC and converts to calendar timezone
   const startTime = new Date(placement.startTime);
   const endTime = new Date(startTime.getTime() + placement.duration * 60 * 1000);
 
@@ -152,12 +228,55 @@ export async function createCalendarEvents(
     try {
       const event = await createCalendarEvent(accessToken, calendarId, placement, taskColor);
       results.push(event);
-    } catch (error) {
-      errors.push(`Failed to create event for "${placement.taskTitle}": ${error}`);
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      errors.push(`Failed to create event for "${placement.taskTitle}": ${errorMessage}`);
     }
   }
 
   return { success: results, errors };
+}
+
+export async function deleteCalendarEvent(
+  accessToken: string,
+  calendarId: string,
+  eventId: string
+): Promise<void> {
+  const calendar = createCalendarClient(accessToken);
+  await calendar.events.delete({
+    calendarId,
+    eventId,
+  });
+}
+
+export async function createCalendar(
+  accessToken: string,
+  summary: string,
+  timeZone: string
+): Promise<GoogleCalendar> {
+  const calendar = createCalendarClient(accessToken);
+  const response = await calendar.calendars.insert({
+    requestBody: {
+      summary,
+      timeZone,
+    },
+  });
+
+  return {
+    id: response.data.id!,
+    summary: response.data.summary!,
+    timeZone: response.data.timeZone,
+  };
+}
+
+export async function deleteCalendar(
+  accessToken: string,
+  calendarId: string
+): Promise<void> {
+  const calendar = createCalendarClient(accessToken);
+  await calendar.calendars.delete({
+    calendarId,
+  });
 }
 
 function getGoogleColorId(hexColor: string): string {

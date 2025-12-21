@@ -12,6 +12,7 @@ import {
   AutoFitResult,
 } from '@/types';
 import { DEFAULT_SETTINGS } from '@/lib/constants';
+import { logApiCall, logSettingsSave, createTimezoneContext } from '@/lib/debug-logger';
 
 export function useTasks() {
   const [tasks, setTasks] = useState<GoogleTask[]>([]);
@@ -51,7 +52,7 @@ export function useTasks() {
   return { tasks, taskLists, loading, error, refetch: fetchTasks };
 }
 
-export function useCalendarEvents(date: string, calendarId: string = 'primary') {
+export function useCalendarEvents(date: string, calendarId: string = 'primary', timezone?: string, calendarTimezone?: string) {
   const [events, setEvents] = useState<GoogleCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,22 +64,73 @@ export function useCalendarEvents(date: string, calendarId: string = 'primary') 
     setError(null);
 
     try {
-      const res = await fetch(
-        `/api/calendar?type=events&date=${date}&calendarId=${encodeURIComponent(calendarId)}`
-      );
+      let url = `/api/calendar?type=events&date=${date}&calendarId=${encodeURIComponent(calendarId)}`;
+      if (timezone) {
+        url += `&timezone=${encodeURIComponent(timezone)}`;
+      }
+      const res = await fetch(url);
 
       if (!res.ok) {
         throw new Error('Failed to fetch calendar events');
       }
 
       const data = await res.json();
+      
+      const timezones = createTimezoneContext(calendarTimezone, timezone);
+      
+      const formattedEvents = Array.isArray(data) ? data.map((event: any) => {
+        const startDate = event.start?.dateTime ? new Date(event.start.dateTime) : null;
+        const endDate = event.end?.dateTime ? new Date(event.end.dateTime) : null;
+        
+        let timeRange = 'N/A';
+        if (startDate && endDate) {
+          const startTime = startDate.toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: calendarTimezone || timezone,
+          });
+          const endTime = endDate.toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: calendarTimezone || timezone,
+          });
+          timeRange = `${startTime} - ${endTime}`;
+        }
+        
+        const eventDate = startDate ? startDate.toLocaleDateString('en-GB', {
+          year: '2-digit',
+          month: '2-digit',
+          day: '2-digit',
+          timeZone: calendarTimezone || timezone,
+        }) : date.split('-').reverse().join('/').slice(0, 8);
+        
+        return {
+          date: eventDate,
+          time: timeRange,
+          name: event.summary || 'Untitled Event',
+        };
+      }) : [];
+      
+      logApiCall(
+        'getEventsForDay',
+        { date, calendarId, timezone, calendarTimezone },
+        {
+          count: formattedEvents.length,
+          events: formattedEvents,
+          calendarTimezone,
+        },
+        timezones
+      );
+      
       setEvents(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [date, calendarId]);
+  }, [date, calendarId, timezone, calendarTimezone]);
 
   useEffect(() => {
     fetchEvents();
@@ -91,23 +143,23 @@ export function useCalendars() {
   const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchCalendars() {
-      try {
-        const res = await fetch('/api/calendar?type=calendars');
-        if (res.ok) {
-          const data = await res.json();
-          setCalendars(data);
-        }
-      } finally {
-        setLoading(false);
+  const fetchCalendars = useCallback(async () => {
+    try {
+      const res = await fetch('/api/calendar?type=calendars');
+      if (res.ok) {
+        const data = await res.json();
+        setCalendars(data);
       }
+    } finally {
+      setLoading(false);
     }
-
-    fetchCalendars();
   }, []);
 
-  return { calendars, loading };
+  useEffect(() => {
+    fetchCalendars();
+  }, [fetchCalendars]);
+
+  return { calendars, loading, refetch: fetchCalendars };
 }
 
 export function useSettings() {
@@ -139,6 +191,10 @@ export function useSettings() {
 
     if (res.ok) {
       const data = await res.json();
+      
+      // Log settings save to browser console
+      logSettingsSave(settings, data);
+      
       setSettings(data);
       return data;
     }
@@ -260,18 +316,16 @@ export function useAutoFit() {
 
   const runAutoFit = async (
     date: string,
-    tasks: GoogleTask[]
+    tasks: GoogleTask[],
+    timezone?: string
   ): Promise<AutoFitResult & { allPlacements: TaskPlacement[] }> => {
     setLoading(true);
 
     try {
-      // Pass timezone offset in minutes (e.g., -480 for UTC+8)
-      const timezoneOffset = new Date().getTimezoneOffset();
-
       const res = await fetch('/api/autofit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, tasks, timezoneOffset }),
+        body: JSON.stringify({ date, tasks, timezone }),
       });
 
       if (!res.ok) {
