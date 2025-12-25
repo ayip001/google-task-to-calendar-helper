@@ -1,6 +1,8 @@
 import { google } from 'googleapis';
 import { GoogleCalendarEvent, GoogleCalendar, TaskPlacement } from '@/types';
 import { UTILITY_MARKER } from '@/lib/constants';
+import { DateTime } from 'luxon';
+import { normalizeIanaTimeZone, parseISODateInZone } from '@/lib/timezone';
 
 export function createCalendarClient(accessToken: string) {
   const auth = new google.auth.OAuth2();
@@ -16,23 +18,26 @@ export async function getCalendars(accessToken: string): Promise<GoogleCalendar[
     id: item.id!,
     summary: item.summary!,
     primary: item.primary ?? undefined,
+    timeZone: item.timeZone ?? undefined,
   }));
 }
 
 export async function getEventsForDay(
   accessToken: string,
   calendarId: string,
-  date: string
+  date: string,
+  selectedTimeZone: string = 'UTC'
 ): Promise<GoogleCalendarEvent[]> {
   const calendar = createCalendarClient(accessToken);
 
-  const startOfDay = new Date(`${date}T00:00:00`);
-  const endOfDay = new Date(`${date}T23:59:59`);
+  const effectiveTimeZone = normalizeIanaTimeZone(selectedTimeZone);
+  const startOfDay = parseISODateInZone(date, effectiveTimeZone);
+  const endExclusive = startOfDay.plus({ days: 1 });
 
   const response = await calendar.events.list({
     calendarId,
-    timeMin: startOfDay.toISOString(),
-    timeMax: endOfDay.toISOString(),
+    timeMin: startOfDay.toUTC().toISO() ?? undefined,
+    timeMax: endExclusive.toUTC().toISO() ?? undefined,
     singleEvents: true,
     orderBy: 'startTime',
   });
@@ -61,19 +66,22 @@ export async function getEventsForMonth(
   accessToken: string,
   calendarId: string,
   year: number,
-  month: number // 0-indexed (0 = January)
+  month: number, // 0-indexed (0 = January)
+  selectedTimeZone: string = 'UTC'
 ): Promise<GoogleCalendarEvent[]> {
   const calendar = createCalendarClient(accessToken);
 
-  // Get first day of the month
-  const startOfMonth = new Date(year, month, 1);
-  // Get last day of the month (day 0 of next month = last day of current month)
-  const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
+  const effectiveTimeZone = normalizeIanaTimeZone(selectedTimeZone);
+  const startOfMonth = DateTime.fromObject(
+    { year, month: month + 1, day: 1, hour: 0, minute: 0, second: 0, millisecond: 0 },
+    { zone: effectiveTimeZone }
+  );
+  const startOfNextMonth = startOfMonth.plus({ months: 1 });
 
   const response = await calendar.events.list({
     calendarId,
-    timeMin: startOfMonth.toISOString(),
-    timeMax: endOfMonth.toISOString(),
+    timeMin: startOfMonth.toUTC().toISO() ?? undefined,
+    timeMax: startOfNextMonth.toUTC().toISO() ?? undefined,
     singleEvents: true,
     orderBy: 'startTime',
     maxResults: 2500, // Google Calendar API max

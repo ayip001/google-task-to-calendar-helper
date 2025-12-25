@@ -18,6 +18,7 @@ import Image from 'next/image';
 import { GoogleCalendarEvent } from '@/types';
 import { useSettings } from '@/hooks/use-data';
 import { isUtilityCreatedEvent } from '@/lib/constants';
+import { normalizeIanaTimeZone } from '@/lib/timezone';
 
 // Cache key for localStorage
 const getMonthCacheKey = (calendarId: string, year: number, month: number) =>
@@ -74,8 +75,9 @@ export default function HomePage() {
     setLoadingMonth(true);
 
     try {
+      const effectiveTimeZone = normalizeIanaTimeZone(settings.timezone ?? 'UTC');
       const response = await fetch(
-        `/api/calendar?type=events&year=${year}&month=${month}&calendarId=${encodeURIComponent(settings.selectedCalendarId)}`
+        `/api/calendar?type=events&year=${year}&month=${month}&calendarId=${encodeURIComponent(settings.selectedCalendarId)}&timeZone=${encodeURIComponent(effectiveTimeZone)}`
       );
       if (response.ok) {
         const data = await response.json();

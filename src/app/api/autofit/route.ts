@@ -4,6 +4,7 @@ import { autoFitTasks } from '@/lib/autofit';
 import { getEventsForDay } from '@/lib/google/calendar';
 import { getPlacements, setPlacements } from '@/lib/kv';
 import { getUserSettings } from '@/lib/kv';
+import { normalizeIanaTimeZone } from '@/lib/timezone';
 import { GoogleTask } from '@/types';
 
 export async function POST(request: Request) {
@@ -15,10 +16,11 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { date, tasks, timezoneOffset } = body as {
+    const { date, tasks, selectedTimeZone, calendarTimeZone } = body as {
       date: string;
       tasks: GoogleTask[];
-      timezoneOffset?: number;
+      selectedTimeZone?: string;
+      calendarTimeZone?: string;
     };
 
     if (!date || !tasks || !Array.isArray(tasks)) {
@@ -26,11 +28,14 @@ export async function POST(request: Request) {
     }
 
     const settings = await getUserSettings(session.user.email);
-    const events = await getEventsForDay(session.accessToken, settings.selectedCalendarId, date);
     const existingPlacements = await getPlacements(session.user.email, date);
 
-    // Pass timezone offset (default to 0 if not provided)
-    const result = autoFitTasks(tasks, events, existingPlacements, settings, date, timezoneOffset ?? 0);
+    const effectiveTimeZone = normalizeIanaTimeZone(
+      settings.timezone ?? selectedTimeZone ?? calendarTimeZone ?? 'UTC'
+    );
+
+    const events = await getEventsForDay(session.accessToken, settings.selectedCalendarId, date, effectiveTimeZone);
+    const result = autoFitTasks(tasks, events, existingPlacements, settings, date, effectiveTimeZone);
 
     const allPlacements = [...existingPlacements, ...result.placements];
     await setPlacements(session.user.email, date, allPlacements);

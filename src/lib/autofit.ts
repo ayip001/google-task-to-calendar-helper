@@ -1,5 +1,7 @@
 import { GoogleTask, GoogleCalendarEvent, UserSettings, TaskPlacement, TimeSlot, AutoFitResult } from '@/types';
 import { TIME_SLOT_INTERVAL } from './constants';
+import { DateTime } from 'luxon';
+import { normalizeIanaTimeZone, wallTimeOnDateToUtc } from '@/lib/timezone';
 
 export function autoFitTasks(
   tasks: GoogleTask[],
@@ -7,14 +9,14 @@ export function autoFitTasks(
   existingPlacements: TaskPlacement[],
   settings: UserSettings,
   date: string,
-  timezoneOffset: number = 0 // Minutes offset from UTC (e.g., -480 for UTC+8)
+  timeZone: string = 'UTC'
 ): AutoFitResult {
   const availableSlots = _calculateAvailableSlots(
     existingEvents,
     existingPlacements,
     settings,
     date,
-    timezoneOffset
+    timeZone
   );
 
   const filteredTasks = settings.ignoreContainerTasks
@@ -70,16 +72,9 @@ function _roundUpToNextSlot(time: Date): Date {
   return result;
 }
 
-// Parse a time string (HH:MM) to a Date in the user's timezone
-// timezoneOffset is in minutes (e.g., -480 for UTC+8)
-function _parseTimeToDate(date: string, time: string, timezoneOffset: number): Date {
-  const [hours, minutes] = time.split(':').map(Number);
-  const [year, month, day] = date.split('-').map(Number);
-
-  // Create date in UTC, then adjust for user's timezone
-  // Formula: UTC = local + offset, so local time in UTC = UTC value - offset
-  const utcTime = Date.UTC(year, month - 1, day, hours, minutes, 0, 0);
-  return new Date(utcTime + timezoneOffset * 60 * 1000);
+function _parseWallTimeToUtcDate(dateISO: string, wallTimeHHMM: string, timeZone: string): Date {
+  const effectiveTimeZone = normalizeIanaTimeZone(timeZone);
+  return wallTimeOnDateToUtc(dateISO, wallTimeHHMM, effectiveTimeZone);
 }
 
 function _calculateAvailableSlots(
@@ -87,18 +82,19 @@ function _calculateAvailableSlots(
   placements: TaskPlacement[],
   settings: UserSettings,
   date: string,
-  timezoneOffset: number
+  timeZone: string
 ): TimeSlot[] {
   const slots: TimeSlot[] = [];
+  const effectiveTimeZone = normalizeIanaTimeZone(timeZone);
 
   // First, constrain to calendar visible range
-  const calendarStart = _parseTimeToDate(date, settings.slotMinTime, timezoneOffset);
-  const calendarEnd = _parseTimeToDate(date, settings.slotMaxTime, timezoneOffset);
+  const calendarStart = _parseWallTimeToUtcDate(date, settings.slotMinTime, effectiveTimeZone);
+  const calendarEnd = _parseWallTimeToUtcDate(date, settings.slotMaxTime, effectiveTimeZone);
 
   // Create slots from working hours, but constrain to calendar range
   for (const hours of settings.workingHours) {
-    let start = _parseTimeToDate(date, hours.start, timezoneOffset);
-    let end = _parseTimeToDate(date, hours.end, timezoneOffset);
+    let start = _parseWallTimeToUtcDate(date, hours.start, effectiveTimeZone);
+    let end = _parseWallTimeToUtcDate(date, hours.end, effectiveTimeZone);
 
     // Constrain to calendar visible range
     if (start < calendarStart) start = new Date(calendarStart);
@@ -110,17 +106,13 @@ function _calculateAvailableSlots(
     }
   }
 
-  // Check if this is today (in user's timezone)
-  const now = new Date();
-  // Convert now to user's timezone for comparison
-  // We need to get the date string in user's timezone
-  const userNow = new Date(now.getTime() - timezoneOffset * 60 * 1000);
-  const todayStr = `${userNow.getUTCFullYear()}-${String(userNow.getUTCMonth() + 1).padStart(2, '0')}-${String(userNow.getUTCDate()).padStart(2, '0')}`;
+  const todayStr = DateTime.now().setZone(effectiveTimeZone).toISODate();
 
   // If we're looking at today, exclude past times
   if (date === todayStr) {
+    const now = new Date();
     const roundedNow = _roundUpToNextSlot(now);
-    const dayStart = _parseTimeToDate(date, '00:00', timezoneOffset);
+    const dayStart = _parseWallTimeToUtcDate(date, '00:00', effectiveTimeZone);
     _subtractTimeFromSlots(slots, dayStart, roundedNow);
   }
 

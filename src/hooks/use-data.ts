@@ -12,6 +12,7 @@ import {
   AutoFitResult,
 } from '@/types';
 import { DEFAULT_SETTINGS } from '@/lib/constants';
+import { normalizeIanaTimeZone } from '@/lib/timezone';
 
 export function useTasks() {
   const [tasks, setTasks] = useState<GoogleTask[]>([]);
@@ -51,7 +52,7 @@ export function useTasks() {
   return { tasks, taskLists, loading, error, refetch: fetchTasks };
 }
 
-export function useCalendarEvents(date: string, calendarId: string = 'primary') {
+export function useCalendarEvents(date: string, calendarId: string = 'primary', selectedTimeZone: string = 'UTC') {
   const [events, setEvents] = useState<GoogleCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,8 +64,9 @@ export function useCalendarEvents(date: string, calendarId: string = 'primary') 
     setError(null);
 
     try {
+      const effectiveTimeZone = normalizeIanaTimeZone(selectedTimeZone);
       const res = await fetch(
-        `/api/calendar?type=events&date=${date}&calendarId=${encodeURIComponent(calendarId)}`
+        `/api/calendar?type=events&date=${date}&calendarId=${encodeURIComponent(calendarId)}&timeZone=${encodeURIComponent(effectiveTimeZone)}`
       );
 
       if (!res.ok) {
@@ -78,7 +80,7 @@ export function useCalendarEvents(date: string, calendarId: string = 'primary') 
     } finally {
       setLoading(false);
     }
-  }, [date, calendarId]);
+  }, [date, calendarId, selectedTimeZone]);
 
   useEffect(() => {
     fetchEvents();
@@ -91,23 +93,23 @@ export function useCalendars() {
   const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchCalendars() {
-      try {
-        const res = await fetch('/api/calendar?type=calendars');
-        if (res.ok) {
-          const data = await res.json();
-          setCalendars(data);
-        }
-      } finally {
-        setLoading(false);
+  const fetchCalendars = useCallback(async () => {
+    try {
+      const res = await fetch('/api/calendar?type=calendars');
+      if (res.ok) {
+        const data = await res.json();
+        setCalendars(data);
       }
+    } finally {
+      setLoading(false);
     }
-
-    fetchCalendars();
   }, []);
 
-  return { calendars, loading };
+  useEffect(() => {
+    fetchCalendars();
+  }, [fetchCalendars]);
+
+  return { calendars, loading, refetch: fetchCalendars };
 }
 
 export function useSettings() {
@@ -260,18 +262,22 @@ export function useAutoFit() {
 
   const runAutoFit = async (
     date: string,
-    tasks: GoogleTask[]
+    tasks: GoogleTask[],
+    selectedTimeZone: string,
+    calendarTimeZone?: string
   ): Promise<AutoFitResult & { allPlacements: TaskPlacement[] }> => {
     setLoading(true);
 
     try {
-      // Pass timezone offset in minutes (e.g., -480 for UTC+8)
-      const timezoneOffset = new Date().getTimezoneOffset();
-
       const res = await fetch('/api/autofit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, tasks, timezoneOffset }),
+        body: JSON.stringify({
+          date,
+          tasks,
+          selectedTimeZone: normalizeIanaTimeZone(selectedTimeZone),
+          calendarTimeZone: calendarTimeZone ? normalizeIanaTimeZone(calendarTimeZone) : undefined,
+        }),
       });
 
       if (!res.ok) {

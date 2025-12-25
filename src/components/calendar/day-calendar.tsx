@@ -4,9 +4,19 @@ import { useRef, useEffect, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import type { EventDropArg, EventInput, EventContentArg } from '@fullcalendar/core';
-import { GoogleCalendarEvent, TaskPlacement, WorkingHours } from '@/types';
+import luxonPlugin from '@fullcalendar/luxon3';
+import type { EventDropArg, EventInput, EventContentArg, SlotLabelContentArg } from '@fullcalendar/core';
+import { DateTime } from 'luxon';
+import { GoogleCalendarEvent, TaskPlacement, UserSettings } from '@/types';
 import { TIME_SLOT_INTERVAL } from '@/lib/constants';
+import {
+  formatTimeForDisplay,
+  normalizeIanaTimeZone,
+  parseTimeLabelToHHMM,
+  utcISOStringFromInstant,
+  wallTimeOnDateToUtc,
+} from '@/lib/timezone';
+import { logTimezoneDebug, onTimezoneDebugRefresh } from '@/lib/debug-timezone';
 import { X } from 'lucide-react';
 
 interface DayCalendarProps {
@@ -17,14 +27,9 @@ interface DayCalendarProps {
   onExternalDrop: (taskId: string, taskTitle: string, startTime: string, taskListTitle?: string) => void;
   onPlacementClick: (placementId: string) => void;
   onPastTimeDrop?: () => void;
-  settings: {
-    defaultTaskDuration: number;
-    taskColor: string;
-    workingHours: WorkingHours[];
-    slotMinTime: string;
-    slotMaxTime: string;
-    timeFormat: '12h' | '24h';
-  };
+  settings: UserSettings;
+  selectedTimeZone: string;
+  calendarTimeZone?: string;
 }
 
 export function DayCalendar({
@@ -36,6 +41,8 @@ export function DayCalendar({
   onPlacementClick,
   onPastTimeDrop,
   settings,
+  selectedTimeZone,
+  calendarTimeZone,
 }: DayCalendarProps) {
   const calendarRef = useRef<FullCalendar>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,24 +66,20 @@ export function DayCalendar({
   const [nowIndicatorPosition, setNowIndicatorPosition] = useState<'top' | 'bottom' | null>(null);
 
   useEffect(() => {
+    const effectiveSelectedTimeZone = normalizeIanaTimeZone(selectedTimeZone);
+
     const checkNowPosition = () => {
-      const now = new Date();
-      const [year, month, day] = date.split('-').map(Number);
-      const viewDate = new Date(year, month - 1, day);
+      const nowInSelectedZone = DateTime.now().setZone(effectiveSelectedTimeZone);
 
       // Only show boundary indicator if viewing today
-      if (
-        now.getFullYear() !== viewDate.getFullYear() ||
-        now.getMonth() !== viewDate.getMonth() ||
-        now.getDate() !== viewDate.getDate()
-      ) {
+      if (nowInSelectedZone.toISODate() !== date) {
         setNowIndicatorPosition(null);
         return;
       }
 
       const [minHour, minMin] = settings.slotMinTime.split(':').map(Number);
       const [maxHour, maxMin] = settings.slotMaxTime.split(':').map(Number);
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const currentMinutes = nowInSelectedZone.hour * 60 + nowInSelectedZone.minute;
       const minMinutes = minHour * 60 + minMin;
       const maxMinutes = maxHour * 60 + maxMin;
 
@@ -92,7 +95,35 @@ export function DayCalendar({
     checkNowPosition();
     const interval = setInterval(checkNowPosition, 60000); // Check every minute
     return () => clearInterval(interval);
-  }, [date, settings.slotMinTime, settings.slotMaxTime]);
+  }, [date, selectedTimeZone, settings.slotMinTime, settings.slotMaxTime]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    logTimezoneDebug({
+      container: containerRef.current,
+      dateISO: date,
+      selectedTimeZone,
+      calendarTimeZone,
+      slotMinTime: settings.slotMinTime,
+      slotMaxTime: settings.slotMaxTime,
+      timeFormat: settings.timeFormat,
+    });
+  }, [date, selectedTimeZone, calendarTimeZone, settings.slotMinTime, settings.slotMaxTime, settings.timeFormat]);
+
+  useEffect(() => {
+    return onTimezoneDebugRefresh(() => {
+      if (!containerRef.current) return;
+      logTimezoneDebug({
+        container: containerRef.current,
+        dateISO: date,
+        selectedTimeZone,
+        calendarTimeZone,
+        slotMinTime: settings.slotMinTime,
+        slotMaxTime: settings.slotMaxTime,
+        timeFormat: settings.timeFormat,
+      });
+    });
+  }, [date, selectedTimeZone, calendarTimeZone, settings.slotMinTime, settings.slotMaxTime, settings.timeFormat]);
 
   // Inject boundary indicator into FullCalendar's scroll container
   useEffect(() => {
@@ -146,7 +177,7 @@ export function DayCalendar({
       id: `placement-${placement.id}`,
       title: placement.taskTitle,
       start: placement.startTime,
-      end: new Date(new Date(placement.startTime).getTime() + placement.duration * 60 * 1000).toISOString(),
+      end: new Date(Date.parse(placement.startTime) + placement.duration * 60 * 1000).toISOString(),
       backgroundColor: settings.taskColor,
       borderColor: settings.taskColor,
       editable: true,
@@ -213,7 +244,7 @@ export function DayCalendar({
         onPastTimeDrop?.();
         return;
       }
-      onPlacementDrop(placementId, info.event.start.toISOString());
+      onPlacementDrop(placementId, utcISOStringFromInstant(info.event.start));
     }
   };
 
@@ -233,7 +264,7 @@ export function DayCalendar({
       // Remove the temporary event that FullCalendar created
       info.event.remove();
       // Create our own placement through the callback
-      onExternalDrop(taskId, taskTitle, info.event.start.toISOString(), taskListTitle);
+      onExternalDrop(taskId, taskTitle, utcISOStringFromInstant(info.event.start), taskListTitle);
     }
   };
 
@@ -248,6 +279,47 @@ export function DayCalendar({
   const slotMinTime = settings.slotMinTime || '06:00';
   const slotMaxTime = settings.slotMaxTime || '22:00';
 
+  const renderSlotLabelContent = (arg: SlotLabelContentArg) => {
+    const effectiveSelectedTimeZone = normalizeIanaTimeZone(selectedTimeZone);
+    const hhmm = parseTimeLabelToHHMM(arg.text, settings.timeFormat);
+    if (!hhmm) {
+      // Fallback to FullCalendar-provided text if parsing ever fails.
+      return <span>{arg.text}</span>;
+    }
+
+    const slotUtc = wallTimeOnDateToUtc(date, hhmm, effectiveSelectedTimeZone);
+    const primary = DateTime.fromJSDate(slotUtc).setZone(effectiveSelectedTimeZone);
+    const primaryLabel = formatTimeForDisplay(primary, settings.timeFormat);
+
+    const effectiveCalendarTimeZone = normalizeIanaTimeZone(calendarTimeZone);
+    const hasSecondary = Boolean(calendarTimeZone) && effectiveCalendarTimeZone !== effectiveSelectedTimeZone;
+    if (!hasSecondary) {
+      return <span>{primaryLabel}</span>;
+    }
+
+    const secondary = DateTime.fromJSDate(slotUtc).setZone(effectiveCalendarTimeZone);
+    const secondaryLabel = formatTimeForDisplay(secondary, settings.timeFormat);
+
+    const primaryDate = primary.toISODate();
+    const secondaryDate = secondary.toISODate();
+    const dayIndicator =
+      !primaryDate || !secondaryDate || primaryDate === secondaryDate
+        ? ''
+        : secondaryDate < primaryDate
+          ? ' -1'
+          : ' +1';
+
+    return (
+      <div className="flex flex-col leading-tight">
+        <span>{primaryLabel}</span>
+        <span className="text-[10px] text-muted-foreground">
+          {secondaryLabel}
+          {dayIndicator}
+        </span>
+      </div>
+    );
+  };
+
   return (
     <div
       ref={containerRef}
@@ -256,11 +328,12 @@ export function DayCalendar({
     >
       <FullCalendar
         ref={calendarRef}
-        plugins={[timeGridPlugin, interactionPlugin]}
+        plugins={[timeGridPlugin, interactionPlugin, luxonPlugin]}
         initialView="timeGridDay"
         initialDate={date}
         headerToolbar={false}
         allDaySlot={false}
+        timeZone={normalizeIanaTimeZone(selectedTimeZone)}
         slotDuration={`00:${TIME_SLOT_INTERVAL}:00`}
         slotMinTime={`${slotMinTime}:00`}
         slotMaxTime={`${slotMaxTime}:00`}
@@ -278,6 +351,7 @@ export function DayCalendar({
         nowIndicator={true}
         businessHours={businessHours}
         slotLaneClassNames="fc-slot-lane"
+        slotLabelContent={renderSlotLabelContent}
       />
     </div>
   );

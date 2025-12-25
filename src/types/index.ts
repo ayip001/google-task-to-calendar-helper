@@ -13,6 +13,8 @@ export interface UserSettings {
   slotMinTime: string;
   slotMaxTime: string;
   timeFormat: '12h' | '24h';
+  timezone?: string; // User's selected IANA timezone string
+  calendarTimezones?: Record<string, string>; // Map of calendarId -> timezone
 }
 
 export interface TaskPlacement {
@@ -66,6 +68,7 @@ export interface GoogleCalendar {
   id: string;
   summary: string;
   primary?: boolean;
+  timeZone?: string; // IANA timezone from Google Calendar API
 }
 
 export interface TimeSlot {
