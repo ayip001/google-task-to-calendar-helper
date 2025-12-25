@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getCalendars, getEventsForDay, getEventsForMonth, createCalendarEvents } from '@/lib/google/calendar';
+import { getUserSettings } from '@/lib/kv';
+import { normalizeIanaTimeZone } from '@/lib/timezone';
 import { TaskPlacement } from '@/types';
 
 export async function GET(request: Request) {
   const session = await auth();
 
-  if (!session?.accessToken) {
+  if (!session?.accessToken || !session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -16,8 +18,12 @@ export async function GET(request: Request) {
   const year = searchParams.get('year');
   const month = searchParams.get('month');
   const calendarId = searchParams.get('calendarId') || 'primary';
+  const requestedTimeZone = searchParams.get('timeZone');
 
   try {
+    const settings = await getUserSettings(session.user.email);
+    const effectiveTimeZone = normalizeIanaTimeZone(settings.timezone ?? requestedTimeZone ?? 'UTC');
+
     if (type === 'calendars') {
       const calendars = await getCalendars(session.accessToken);
       return NextResponse.json(calendars);
@@ -29,14 +35,15 @@ export async function GET(request: Request) {
         session.accessToken,
         calendarId,
         parseInt(year, 10),
-        parseInt(month, 10)
+        parseInt(month, 10),
+        effectiveTimeZone
       );
       return NextResponse.json({ events });
     }
 
     // Day-based events fetching (legacy, still used by day view)
     if (type === 'events' && date) {
-      const events = await getEventsForDay(session.accessToken, calendarId, date);
+      const events = await getEventsForDay(session.accessToken, calendarId, date, effectiveTimeZone);
       return NextResponse.json(events);
     }
 

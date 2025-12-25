@@ -3,8 +3,8 @@
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
-import { format, parseISO, isValid } from 'date-fns';
 import { toast } from 'sonner';
+import { DateTime } from 'luxon';
 
 import { DayCalendar } from '@/components/calendar/day-calendar';
 import { TaskPanel } from '@/components/tasks/task-panel';
@@ -34,6 +34,8 @@ import {
   filterTasks,
 } from '@/hooks/use-data';
 import { TaskPlacement, TaskFilter, GoogleTask } from '@/types';
+import { TIME_SLOT_INTERVAL } from '@/lib/constants';
+import { normalizeIanaTimeZone, wallTimeOnDateToUtc } from '@/lib/timezone';
 import {
   Calendar,
   ChevronLeft,
@@ -63,10 +65,17 @@ export default function DayPage() {
   const { tasks, taskLists, loading: tasksLoading } = useTasks();
   const { settings, loading: settingsLoading, updateSettings } = useSettings();
   const { calendars, refetch: refetchCalendars } = useCalendars();
+  const selectedTimeZone = useMemo(() => {
+    const tz =
+      settings.timezone ??
+      calendars.find((c) => c.id === settings.selectedCalendarId)?.timeZone ??
+      'UTC';
+    return normalizeIanaTimeZone(tz);
+  }, [settings.timezone, settings.selectedCalendarId, calendars]);
   const {
     events,
     refetch: refetchEvents,
-  } = useCalendarEvents(dateParam, settings.selectedCalendarId);
+  } = useCalendarEvents(dateParam, settings.selectedCalendarId, selectedTimeZone);
   const {
     placements,
     addPlacement,
@@ -91,8 +100,11 @@ export default function DayPage() {
     }
   }, [status, router]);
 
-  const parsedDate = parseISO(dateParam);
-  const isValidDate = isValid(parsedDate);
+  const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && DateTime.fromISO(dateParam).isValid;
+  const viewedDayInSelectedZone = useMemo(
+    () => DateTime.fromISO(dateParam, { zone: selectedTimeZone }),
+    [dateParam, selectedTimeZone]
+  );
 
   if (!isValidDate) {
     return (
@@ -118,9 +130,10 @@ export default function DayPage() {
   }
 
   const navigateDay = (direction: 'prev' | 'next') => {
-    const newDate = new Date(parsedDate);
-    newDate.setDate(newDate.getDate() + (direction === 'prev' ? -1 : 1));
-    router.push(`/day/${format(newDate, 'yyyy-MM-dd')}`);
+    const next = viewedDayInSelectedZone.plus({ days: direction === 'prev' ? -1 : 1 }).toISODate();
+    if (next) {
+      router.push(`/day/${next}`);
+    }
   };
 
   const handlePlacementDrop = async (placementId: string, newStartTime: string) => {
@@ -165,7 +178,9 @@ export default function DayPage() {
     }
 
     try {
-      const result = await runAutoFit(dateParam, filteredTasks);
+      const calendarTimeZone = calendars.find((c) => c.id === settings.selectedCalendarId)?.timeZone;
+
+      const result = await runAutoFit(dateParam, filteredTasks, selectedTimeZone, calendarTimeZone);
       setPlacements(result.allPlacements);
       toast.success(result.message);
     } catch {
@@ -177,7 +192,9 @@ export default function DayPage() {
   const handleAddTask = async (task: GoogleTask) => {
     try {
       // Try to auto-fit this single task
-      const result = await runAutoFit(dateParam, [task]);
+      const calendarTimeZone = calendars.find((c) => c.id === settings.selectedCalendarId)?.timeZone;
+
+      const result = await runAutoFit(dateParam, [task], selectedTimeZone, calendarTimeZone);
 
       if (result.placements.length > 0) {
         // Task was placed in working hours
@@ -213,41 +230,33 @@ export default function DayPage() {
         // Find first available slot in calendar range
         const slotMinTime = settings.slotMinTime || '06:00';
         const slotMaxTime = settings.slotMaxTime || '22:00';
-        const [minH, minM] = slotMinTime.split(':').map(Number);
-        const [maxH, maxM] = slotMaxTime.split(':').map(Number);
-
-        const [year, month, day] = dateParam.split('-').map(Number);
-        const calendarStart = new Date(year, month - 1, day, minH, minM);
-        const calendarEnd = new Date(year, month - 1, day, maxH, maxM);
+        const calendarStart = wallTimeOnDateToUtc(dateParam, slotMinTime, selectedTimeZone);
+        const calendarEnd = wallTimeOnDateToUtc(dateParam, slotMaxTime, selectedTimeZone);
         const taskDuration = settings.defaultTaskDuration * 60 * 1000;
 
         let foundSlot: Date | null = null;
-        let currentTime = new Date(Math.max(calendarStart.getTime(), Date.now()));
+        const isTodayInSelectedZone = DateTime.now().setZone(selectedTimeZone).toISODate() === dateParam;
+        const startMs = isTodayInSelectedZone
+          ? Math.max(calendarStart.getTime(), Date.now())
+          : calendarStart.getTime();
+        const intervalMs = TIME_SLOT_INTERVAL * 60 * 1000;
+        let currentTimeMs = Math.ceil(startMs / intervalMs) * intervalMs;
 
-        // Round up to next 15-minute slot
-        const minutes = currentTime.getMinutes();
-        const remainder = minutes % 15;
-        if (remainder > 0) {
-          currentTime.setMinutes(minutes + (15 - remainder));
-          currentTime.setSeconds(0);
-          currentTime.setMilliseconds(0);
-        }
-
-        while (currentTime.getTime() + taskDuration <= calendarEnd.getTime()) {
-          const slotEnd = new Date(currentTime.getTime() + taskDuration);
+        while (currentTimeMs + taskDuration <= calendarEnd.getTime()) {
+          const slotStart = new Date(currentTimeMs);
+          const slotEnd = new Date(currentTimeMs + taskDuration);
 
           // Check if this slot overlaps with any busy slot
           const hasConflict = busySlots.some((busy) => {
-            return currentTime < busy.end && slotEnd > busy.start;
+            return slotStart < busy.end && slotEnd > busy.start;
           });
 
           if (!hasConflict) {
-            foundSlot = currentTime;
+            foundSlot = slotStart;
             break;
           }
 
-          // Move to next 15-minute slot
-          currentTime = new Date(currentTime.getTime() + 15 * 60 * 1000);
+          currentTimeMs += intervalMs;
         }
 
         if (foundSlot) {
@@ -326,8 +335,8 @@ export default function DayPage() {
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <h1 className="text-sm md:text-lg font-semibold min-w-[120px] md:min-w-[180px] text-center">
-                <span className="md:hidden">{format(parsedDate, 'MMM d')}</span>
-                <span className="hidden md:inline">{format(parsedDate, 'EEEE, MMMM d, yyyy')}</span>
+                <span className="md:hidden">{viewedDayInSelectedZone.toFormat('MMM d')}</span>
+                <span className="hidden md:inline">{viewedDayInSelectedZone.toFormat('EEEE, MMMM d, yyyy')}</span>
               </h1>
               <Button variant="ghost" size="icon" onClick={() => navigateDay('next')}>
                 <ChevronRight className="h-4 w-4" />
@@ -499,6 +508,8 @@ export default function DayPage() {
             onPlacementClick={handlePlacementClick}
             onPastTimeDrop={() => toast.error('Cannot place tasks in the past')}
             settings={settings}
+            selectedTimeZone={settings.timezone ?? calendars.find((c) => c.id === settings.selectedCalendarId)?.timeZone ?? 'UTC'}
+            calendarTimeZone={calendars.find((c) => c.id === settings.selectedCalendarId)?.timeZone}
           />
         </div>
 
@@ -527,6 +538,8 @@ export default function DayPage() {
               onPlacementClick={handlePlacementClick}
               onPastTimeDrop={() => toast.error('Cannot place tasks in the past')}
               settings={settings}
+              selectedTimeZone={settings.timezone ?? calendars.find((c) => c.id === settings.selectedCalendarId)?.timeZone ?? 'UTC'}
+              calendarTimeZone={calendars.find((c) => c.id === settings.selectedCalendarId)?.timeZone}
             />
           </div>
         ) : (

@@ -24,6 +24,7 @@ import {
 import { Settings, Plus, X, AlertTriangle, RefreshCw, LocateFixed } from 'lucide-react';
 import { TimezonePicker } from '@/components/settings/timezone-picker';
 import { Input } from '@/components/ui/input';
+import { requestTimezoneDebugRefresh } from '@/lib/debug-timezone';
 
 interface SettingsPanelProps {
   settings: UserSettings;
@@ -60,6 +61,7 @@ export function SettingsPanel({ settings, calendars, onSave, showLabel = false, 
     setSaving(true);
     try {
       await onSave(localSettings);
+      requestTimezoneDebugRefresh();
       setOpen(false);
     } finally {
       setSaving(false);
