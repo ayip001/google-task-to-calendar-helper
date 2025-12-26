@@ -311,11 +311,23 @@ export function filterTasks(tasks: GoogleTask[], filter: TaskFilter): GoogleTask
     }
 
     if (filter.searchText) {
-      const search = filter.searchText.toLowerCase();
-      const titleMatch = task.title.toLowerCase().includes(search);
-      const notesMatch = task.notes?.toLowerCase().includes(search) || false;
-      if (!titleMatch && !notesMatch) {
-        return false;
+      const searchTerms = filter.searchText.toLowerCase().split(/\s+/).filter((t) => t.length > 0);
+
+      for (const term of searchTerms) {
+        if (term.startsWith('-') && term.length > 1) {
+          const negativeTerm = term.substring(1);
+          const titleMatch = task.title.toLowerCase().includes(negativeTerm);
+          const notesMatch = task.notes?.toLowerCase().includes(negativeTerm) || false;
+          if (titleMatch || notesMatch) {
+            return false;
+          }
+        } else {
+          const titleMatch = task.title.toLowerCase().includes(term);
+          const notesMatch = task.notes?.toLowerCase().includes(term) || false;
+          if (!titleMatch && !notesMatch) {
+            return false;
+          }
+        }
       }
     }
 
