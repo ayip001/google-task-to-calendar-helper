@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { Footer } from '@/components/ui/footer';
 
 export default function TermsPage() {
@@ -7,6 +8,13 @@ export default function TermsPage() {
       <header className="border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
+            <Image
+              src="/tasks2cal-logo.svg"
+              alt="Tasks2Cal Logo"
+              width={48}
+              height={24}
+              className="h-6 w-12"
+            />
             <h1 className="text-xl font-semibold">Tasks2Cal</h1>
           </Link>
         </div>
