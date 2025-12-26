@@ -300,12 +300,17 @@ export function DayCalendar({
     const primaryLabel = formatTimeForDisplay(primary, settings.timeFormat);
 
     const effectiveCalendarTimeZone = normalizeIanaTimeZone(calendarTimeZone);
-    const hasSecondary = Boolean(calendarTimeZone) && effectiveCalendarTimeZone !== effectiveSelectedTimeZone;
+    const secondary = DateTime.fromJSDate(slotUtc).setZone(effectiveCalendarTimeZone);
+
+    const hasSecondary =
+      Boolean(calendarTimeZone) &&
+      effectiveCalendarTimeZone !== effectiveSelectedTimeZone &&
+      primary.offset !== secondary.offset;
+
     if (!hasSecondary) {
       return <span>{primaryLabel}</span>;
     }
 
-    const secondary = DateTime.fromJSDate(slotUtc).setZone(effectiveCalendarTimeZone);
     const secondaryLabel = formatTimeForDisplay(secondary, settings.timeFormat);
 
     const primaryDate = primary.toISODate();
